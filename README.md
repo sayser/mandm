@@ -17,7 +17,7 @@ cd C:\Users\sayser\Desktop\MandM
 dotnet run --project src\MandM\MandM.csproj -r win-x64
 ```
 
-Or open `MandM.sln` in Visual Studio / Cursor and F5.
+Or open `MandM.slnx` in Visual Studio / Cursor and F5.
 
 ## Publish (single-file portable exe)
 
@@ -47,7 +47,7 @@ Matching is case-insensitive substring with light punctuation tolerance.
 ## Solution layout
 
 ```
-MandM.sln
+MandM.slnx
 src/MandM/
   App.xaml(.cs)           App host + dark theme
   MainWindow.*            Buff list, abilities OCR, combat preview
