@@ -1,0 +1,50 @@
+<Window x:Class="MandM.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MandM Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="#CC141416"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="CanResizeWithGrip"
+        Width="280" Height="220"
+        MinWidth="180" MinHeight="100">
+  <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="8">
+    <DockPanel>
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+        <TextBlock Text="BUFFS" FontSize="11" FontWeight="SemiBold"
+                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+        <TextBlock Text="drag" FontSize="10" Foreground="{StaticResource MutedBrush}"
+                   HorizontalAlignment="Right" VerticalAlignment="Center"/>
+      </DockPanel>
+      <ListBox Name="ListActive" Background="Transparent" BorderThickness="0"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <Grid Margin="0,2">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="12"/>
+              <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
+                         FontFamily="Consolas" FontSize="12" Margin="8,0,0,0">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                        <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </Border>
+</Window>
