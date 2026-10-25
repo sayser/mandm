@@ -1,50 +1,107 @@
 <Window x:Class="MandM.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="MandM Overlay"
+        Title="MandM Buff Overlay"
+        Width="360" Height="260" MinWidth="180" MinHeight="56"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="#CC141416"
+        Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="CanResizeWithGrip"
-        Width="280" Height="220"
-        MinWidth="180" MinHeight="100">
-  <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="8">
-    <DockPanel>
-      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-        <TextBlock Text="BUFFS" FontSize="11" FontWeight="SemiBold"
-                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
-        <TextBlock Text="drag" FontSize="10" Foreground="{StaticResource MutedBrush}"
-                   HorizontalAlignment="Right" VerticalAlignment="Center"/>
-      </DockPanel>
-      <ListBox Name="ListActive" Background="Transparent" BorderThickness="0"
-               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-        <ListBox.ItemTemplate>
-          <DataTemplate>
-            <Grid Margin="0,2">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" FontSize="12"/>
-              <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
-                         FontFamily="Consolas" FontSize="12" Margin="8,0,0,0">
-                <TextBlock.Style>
-                  <Style TargetType="TextBlock">
-                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+        PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
+  <!-- Near-invisible hit target like EQDM buff overlay -->
+  <Border Background="#01000000" BorderBrush="#556C8CA2" BorderThickness="1" CornerRadius="10" Padding="5">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <Grid Margin="0,0,0,4" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="◈" FontSize="16" Foreground="#A98BFF" Margin="2,0,8,0"/>
+          <TextBlock Text="BUFF TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
+        </StackPanel>
+        <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="22" Height="22" Padding="0" FontSize="13"
+                ToolTip="Close buff overlay" Click="Close_Click"/>
+      </Grid>
+
+      <Grid Grid.Row="1">
+        <ListBox Name="ListActive" Background="Transparent" BorderThickness="0"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,4,0">
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+              <Setter Property="Padding" Value="0"/>
+              <Setter Property="Margin" Value="0,0,0,6"/>
+              <Setter Property="Focusable" Value="False"/>
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter/>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListBox.ItemContainerStyle>
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border BorderThickness="1" CornerRadius="8" Background="#660A2E2E"
+                      BorderBrush="#AA2EE6C8" Padding="10,8" MinHeight="44">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                             Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
+                             FontWeight="Bold" FontSize="20" Margin="8,0,0,0"
+                             VerticalAlignment="Center">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="#A98BFF"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                            <Setter Property="Foreground" Value="#FFBD57"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </Grid>
+                <Border.Style>
+                  <Style TargetType="Border">
                     <Style.Triggers>
                       <DataTrigger Binding="{Binding IsWarning}" Value="True">
-                        <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
+                        <Setter Property="BorderBrush" Value="#FFBD57"/>
+                        <DataTrigger.EnterActions>
+                          <BeginStoryboard x:Name="ExpiryPulse">
+                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                              <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                               From="0.4" To="1" Duration="0:0:0.38"/>
+                            </Storyboard>
+                          </BeginStoryboard>
+                        </DataTrigger.EnterActions>
+                        <DataTrigger.ExitActions>
+                          <StopStoryboard BeginStoryboardName="ExpiryPulse"/>
+                        </DataTrigger.ExitActions>
                       </DataTrigger>
                     </Style.Triggers>
                   </Style>
-                </TextBlock.Style>
-              </TextBlock>
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-    </DockPanel>
+                </Border.Style>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock Name="TxtEmpty" Text="No tracked buffs are currently active."
+                   Foreground="#7899AD" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="11" IsHitTestVisible="False"/>
+      </Grid>
+    </Grid>
   </Border>
 </Window>

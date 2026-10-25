@@ -15,6 +15,15 @@ public sealed class BuffDefinition
     public string AlarmSound { get; set; } = "Exclamation";
     public bool Enabled { get; set; } = true;
 
+    public string DurationDisplay =>
+        DurationSeconds >= 60
+            ? $"{DurationSeconds / 60.0:0.#}m"
+            : $"{DurationSeconds}s";
+
+    public string WarnDisplay => $"{WarnSeconds}s";
+
+    public string StatusDisplay => Enabled ? "Enabled" : "Disabled";
+
     public BuffDefinition Clone() => new()
     {
         Id = Id,

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="#66000000"
+        Background="#8806121C"
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
@@ -14,12 +14,15 @@
         MouseLeftButtonUp="Root_MouseLeftButtonUp"
         KeyDown="Root_KeyDown"
         Focusable="True">
-    <TextBlock Name="Hint" Text="Drag to select region — Esc to cancel"
-               Foreground="White" FontSize="16" FontWeight="SemiBold"
-               HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,40,0,0"/>
+    <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,36,0,0"
+            Background="#B00C2B40" BorderBrush="#A98BFF" BorderThickness="1"
+            CornerRadius="10" Padding="18,10">
+      <TextBlock Name="Hint" Text="Drag to select region — Esc to cancel"
+                 Foreground="#E8F5FC" FontSize="14" FontWeight="SemiBold"/>
+    </Border>
     <Rectangle Name="Selection"
-               Stroke="#FFC4A35A" StrokeThickness="2"
-               Fill="#33C4A35A"
+               Stroke="#A98BFF" StrokeThickness="2"
+               Fill="#33A98BFF"
                Visibility="Collapsed"
                IsHitTestVisible="False"/>
   </Grid>

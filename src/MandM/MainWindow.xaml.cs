@@ -16,10 +16,17 @@ public partial class MainWindow : Window
         ListAbilities.ItemsSource = App.State.Tracker.LoadedAbilities;
         RefreshBuffList();
         UpdateOverlayButton();
+        UpdateActiveEmptyState();
 
         App.State.Monitor.StatusChanged += s => Dispatcher.Invoke(() => TxtStatus.Text = s);
         App.State.Monitor.CombatPreviewChanged += s => Dispatcher.Invoke(() => TxtCombatPreview.Text = s);
-        App.State.Tracker.Changed += () => Dispatcher.Invoke(RefreshBuffList);
+        App.State.Tracker.Changed += () => Dispatcher.Invoke(() =>
+        {
+            RefreshBuffList();
+            UpdateActiveEmptyState();
+        });
+        App.State.Tracker.ActiveBuffs.CollectionChanged += (_, _) =>
+            Dispatcher.Invoke(UpdateActiveEmptyState);
 
         TxtStatus.Text = App.State.Ocr.IsAvailable
             ? App.State.Monitor.Status
@@ -57,6 +64,11 @@ public partial class MainWindow : Window
         var on = App.State.Settings.OverlayEnabled;
         BtnOverlay.Content = on ? "Overlay: On" : "Overlay: Off";
     }
+
+    private void UpdateActiveEmptyState() =>
+        TxtNoActive.Visibility = App.State.Tracker.ActiveBuffs.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     private void Overlay_Click(object sender, RoutedEventArgs e)
     {

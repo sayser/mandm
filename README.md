@@ -1,6 +1,6 @@
 # MandM
 
-Self-buff tracker for **Monsters & Memories**. EQDM-like Windows desktop app (visual language only — not EverQuest / EQLDMG code).
+Self-buff tracker for **Monsters & Memories**. Windows desktop app styled after [EQLDMG / EQDM](https://github.com/sayser/EQLDMG) (navy glass panels, teal borders, purple timers) — visual language only; no EverQuest log-parser code.
 
 **v1:** personal buff timers via OCR of Combat Text + Abilities regions. No party/auction/DPS.
 
