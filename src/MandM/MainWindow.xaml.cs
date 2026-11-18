@@ -9,8 +9,10 @@ public partial class MainWindow : Window
 {
     private static readonly Brush OcrOnlineBrush = Freeze(Color.FromRgb(0x39, 0xE0, 0xCC));
     private static readonly Brush OcrOfflineBrush = Freeze(Color.FromRgb(0xFF, 0x5E, 0x70));
+    private static readonly Brush MutedPillBrush = Freeze(Color.FromRgb(0x89, 0xA9, 0xC1));
 
     private OverlayWindow? _overlay;
+    private MouseHighlightOverlayWindow? _mouseHighlight;
 
     public MainWindow()
     {
@@ -21,6 +23,7 @@ public partial class MainWindow : Window
         RefreshBuffList();
         UpdateOverlayButton();
         UpdateActiveEmptyState();
+        ApplyMouseHighlight();
         RefreshStatusPills();
 
         App.State.Monitor.StatusChanged += s => Dispatcher.Invoke(() =>
@@ -59,6 +62,9 @@ public partial class MainWindow : Window
                 _overlay = null;
             }
 
+            _mouseHighlight?.Close();
+            _mouseHighlight = null;
+
             App.State.SaveSettings();
         };
     }
@@ -94,10 +100,37 @@ public partial class MainWindow : Window
             ? (string.IsNullOrWhiteSpace(App.State.Monitor.Status) ? "Live" : Truncate(App.State.Monitor.Status, 28))
             : "Unavailable";
         TxtOverlayPill.Text = App.State.Settings.OverlayEnabled ? "On" : "Off";
-        TxtOverlayPill.Foreground = App.State.Settings.OverlayEnabled
-            ? OcrOnlineBrush
-            : new SolidColorBrush(Color.FromRgb(0x89, 0xA9, 0xC1));
+        TxtOverlayPill.Foreground = App.State.Settings.OverlayEnabled ? OcrOnlineBrush : MutedPillBrush;
+
+        var mouseOn = App.State.Settings.MouseHighlight?.Enabled == true;
+        TxtMousePill.Text = mouseOn ? "On" : "Off";
+        TxtMousePill.Foreground = mouseOn ? OcrOnlineBrush : MutedPillBrush;
+
         TxtActivePill.Text = App.State.Tracker.ActiveBuffs.Count.ToString();
+    }
+
+    private void ApplyMouseHighlight()
+    {
+        var settings = App.State.Settings.MouseHighlight ?? new MouseHighlightSettings();
+        if (settings.Enabled)
+        {
+            _mouseHighlight ??= new MouseHighlightOverlayWindow();
+            _mouseHighlight.ApplyOptions(settings);
+        }
+        else
+        {
+            _mouseHighlight?.ApplyOptions(settings);
+        }
+
+        RefreshStatusPills();
+    }
+
+    private void ModuleTab_Checked(object sender, RoutedEventArgs e)
+    {
+        if (PanelBuffs is null || PanelDamage is null) return;
+        var showBuffs = TabBuffs.IsChecked == true;
+        PanelBuffs.Visibility = showBuffs ? Visibility.Visible : Visibility.Collapsed;
+        PanelDamage.Visibility = showBuffs ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private static string Truncate(string value, int max) =>
@@ -163,9 +196,11 @@ public partial class MainWindow : Window
     private void Options_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OptionsWindow { Owner = this };
-        dlg.ShowDialog();
+        if (dlg.ShowDialog() == true)
+            ApplyMouseHighlight();
         RefreshBuffList();
         TxtStatus.Text = App.State.Monitor.Status;
+        RefreshStatusPills();
     }
 
     private void AddBuff_Click(object sender, RoutedEventArgs e)

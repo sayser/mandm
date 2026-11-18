@@ -38,6 +38,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="6"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
 
           <DockPanel>
@@ -68,8 +70,8 @@
           </DockPanel>
 
           <!-- Status pills — MandM content, EQDM chrome -->
-          <Border Grid.Row="2" Background="#88071424" BorderBrush="#3D6178"
-                  BorderThickness="1" CornerRadius="14" Padding="8,6">
+          <Border Grid.Row="2" Background="#BA081F31" BorderBrush="#4F7891"
+                  BorderThickness="1" CornerRadius="16" Padding="8,6">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
               <Border Style="{StaticResource StatusPill}">
                 <StackPanel Orientation="Horizontal">
@@ -87,12 +89,31 @@
                   <TextBlock Name="TxtOverlayPill" Text="Off" FontSize="12" FontWeight="SemiBold" Foreground="#2ED9C7"/>
                 </StackPanel>
               </Border>
+              <Border Style="{StaticResource StatusPill}">
+                <StackPanel>
+                  <TextBlock Text="Cursor ring" Style="{StaticResource MetricLabel}" FontSize="10"/>
+                  <TextBlock Name="TxtMousePill" Text="Off" FontSize="12" FontWeight="SemiBold" Foreground="#89A9C1"/>
+                </StackPanel>
+              </Border>
               <Border Style="{StaticResource StatusPill}" Margin="0">
                 <StackPanel>
                   <TextBlock Text="Active buffs" Style="{StaticResource MetricLabel}" FontSize="10"/>
                   <TextBlock Name="TxtActivePill" Text="0" FontSize="12" FontWeight="SemiBold" Foreground="#D8C2FF"/>
                 </StackPanel>
               </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- Primary module nav (EQDM chrome, MandM modules) -->
+          <Border Grid.Row="4" Background="#88071424" BorderBrush="#3D6178"
+                  BorderThickness="1" CornerRadius="14" Padding="6,4">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <RadioButton Name="TabBuffs" Content="BUFFS" Tag="◈" GroupName="PrimaryModule"
+                           Style="{StaticResource PrimaryModuleNavButton}" IsChecked="True"
+                           Checked="ModuleTab_Checked"/>
+              <RadioButton Name="TabDamage" Content="DAMAGE TRACKER" Tag="⚔" GroupName="PrimaryModule"
+                           Style="{StaticResource PrimaryModuleNavButton}" MinWidth="160"
+                           Checked="ModuleTab_Checked"/>
             </StackPanel>
           </Border>
         </Grid>
@@ -104,6 +125,8 @@
       </Border>
 
       <Grid>
+        <!-- BUFFS workspace -->
+        <Grid Name="PanelBuffs">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="1.55*"/>
           <ColumnDefinition Width="14"/>
@@ -347,6 +370,79 @@
             </DockPanel>
           </Border>
         </DockPanel>
+        </Grid>
+
+        <!-- DAMAGE TRACKER — styled shell (no live DPS yet) -->
+        <Grid Name="PanelDamage" Visibility="Collapsed">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="14"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+
+          <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="16,14">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+                <TextBlock Text="⚔" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                  <TextBlock Text="DAMAGE RANKING" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                  <TextBlock Text="Placeholder — live combat parsing comes next"
+                             Foreground="#66879D" FontSize="10"/>
+                </StackPanel>
+              </StackPanel>
+              <Border Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
+                  <TextBlock Text="Coming next" FontSize="18" FontWeight="SemiBold"
+                             Foreground="#D8C2FF" HorizontalAlignment="Center"/>
+                  <TextBlock Text="DPS ranking will appear here once combat parsing lands."
+                             Foreground="#7899AD" FontSize="12" TextWrapping="Wrap"
+                             TextAlignment="Center" Margin="0,8,0,0" MaxWidth="280"/>
+                </StackPanel>
+              </Border>
+            </DockPanel>
+          </Border>
+
+          <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
+                <TextBlock Text="◎" FontSize="18" Foreground="#57A99F" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                  <TextBlock Text="DAMAGE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                  <TextBlock Text="Offense / Defense / Healing shell — no live data yet"
+                             Foreground="#66879D" FontSize="10"/>
+                </StackPanel>
+              </StackPanel>
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                  <Border Background="#55301A52" BorderBrush="#C9A6FF" BorderThickness="1.5"
+                          CornerRadius="10" Padding="14,7" Margin="0,0,6,0">
+                    <TextBlock Text="Offense" Foreground="#D8C2FF" FontWeight="SemiBold" FontSize="11"/>
+                  </Border>
+                  <Border Background="Transparent" BorderBrush="#5A7F96" BorderThickness="1.5"
+                          CornerRadius="10" Padding="14,7" Margin="0,0,6,0">
+                    <TextBlock Text="Defense" Foreground="#B7CDDA" FontWeight="SemiBold" FontSize="11"/>
+                  </Border>
+                  <Border Background="Transparent" BorderBrush="#5A7F96" BorderThickness="1.5"
+                          CornerRadius="10" Padding="14,7">
+                    <TextBlock Text="Healing" Foreground="#B7CDDA" FontWeight="SemiBold" FontSize="11"/>
+                  </Border>
+                </StackPanel>
+                <Border Grid.Row="1" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
+                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Ellipse Width="96" Height="96" Stroke="#355B73" StrokeThickness="10" Fill="Transparent"
+                             Opacity="0.55" Margin="0,0,0,16"/>
+                    <TextBlock Text="No encounter data" Foreground="#7899AD" FontSize="12"
+                               HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </DockPanel>
+          </Border>
+        </Grid>
       </Grid>
     </DockPanel>
   </Grid>

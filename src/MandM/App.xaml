@@ -189,6 +189,52 @@
       </Setter>
     </Style>
 
+    <Style x:Key="PrimaryModuleNavButton" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="#B7CDDA"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="3,0"/>
+      <Setter Property="MinWidth" Value="128"/>
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent"
+                    BorderThickness="1.5" CornerRadius="10" Padding="10,7" SnapsToDevicePixels="True">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border x:Name="IconBox" Width="28" Height="28" CornerRadius="7"
+                        Background="#33081420" BorderBrush="#355B73" BorderThickness="1"
+                        Margin="0,0,8,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="IconGlyph" Text="{TemplateBinding Tag}"
+                             FontFamily="Segoe UI Symbol" FontSize="13"
+                             Foreground="#B7CDDA" HorizontalAlignment="Center"
+                             VerticalAlignment="Center"/>
+                </Border>
+                <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
+              </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#33153A50"/>
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="#5A7F96"/>
+                <Setter Property="Foreground" Value="#E8F5FC"/>
+                <Setter TargetName="IconGlyph" Property="Foreground" Value="#E8F5FC"/>
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#55301A52"/>
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="#C9A6FF"/>
+                <Setter Property="Foreground" Value="#D8C2FF"/>
+                <Setter TargetName="IconBox" Property="Background" Value="#664B2FA8"/>
+                <Setter TargetName="IconBox" Property="BorderBrush" Value="#A98BFF"/>
+                <Setter TargetName="IconGlyph" Property="Foreground" Value="#D8C2FF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <Style x:Key="PanelActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Foreground" Value="#C8DCE8"/>
       <Setter Property="FontSize" Value="11"/>

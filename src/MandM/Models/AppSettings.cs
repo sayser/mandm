@@ -13,6 +13,7 @@ public sealed class AppSettings
     public double OverlayHeight { get; set; } = 220;
     public int OcrIntervalMs { get; set; } = 750;
     public string UpdateRepo { get; set; } = "sayser/mandm";
+    public MouseHighlightSettings MouseHighlight { get; set; } = new();
 
     public static AppSettings CreateDefault()
     {

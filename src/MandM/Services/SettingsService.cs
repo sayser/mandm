@@ -41,6 +41,7 @@ public sealed class SettingsService
             settings.Buffs ??= [];
             settings.AbilitiesRegion ??= new CaptureRegion();
             settings.CombatTextRegion ??= new CaptureRegion();
+            settings.MouseHighlight ??= new MouseHighlightSettings();
             return settings;
         }
         catch

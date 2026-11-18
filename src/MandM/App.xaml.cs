@@ -43,6 +43,19 @@ public partial class App : Application
             "Consuming Pact"
         ]);
 
+        // Seed mouse-highlight so Options shows a realistic enabled state in shots.
+        State.Settings.MouseHighlight = new MouseHighlightSettings
+        {
+            Enabled = true,
+            ColorHex = "#2FD8C7",
+            Diameter = 52,
+            Thickness = 3,
+            Opacity = 0.85,
+            Blink = false,
+            SecondRing = true,
+            SecondDiameter = 88
+        };
+
         var main = new MainWindow
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -53,6 +66,13 @@ public partial class App : Application
         main.UpdateLayout();
         DoEvents();
         SaveWindowPng(main, Path.Combine(outDir, "main-buff-tracker.png"));
+
+        // Damage Tracker tab shell
+        main.TabDamage.IsChecked = true;
+        DoEvents();
+        SaveWindowPng(main, Path.Combine(outDir, "main-damage-tracker.png"));
+        main.TabBuffs.IsChecked = true;
+        DoEvents();
 
         var overlay = new OverlayWindow(State.Tracker)
         {
@@ -72,12 +92,15 @@ public partial class App : Application
             Owner = main,
             WindowStartupLocation = WindowStartupLocation.Manual,
             Left = 200,
-            Top = 120
+            Top = 40,
+            Height = 720
         };
         options.Show();
         options.UpdateLayout();
         DoEvents();
         SaveWindowPng(options, Path.Combine(outDir, "options.png"));
+        // Dedicated crop-friendly alias for the cursor settings section
+        SaveWindowPng(options, Path.Combine(outDir, "options-mouse-highlight.png"));
 
         // Region picker with EQDM-style pointer circle staged for the shot.
         var picker = new RegionPickerWindow
