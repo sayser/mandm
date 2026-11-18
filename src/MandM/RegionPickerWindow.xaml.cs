@@ -1,11 +1,17 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using MandM.Models;
 
 namespace MandM;
 
 public partial class RegionPickerWindow : Window
 {
+    private static readonly Brush IdleStroke = Freeze(Color.FromArgb(0xE6, 0x2E, 0xE6, 0xC8));
+    private static readonly Brush IdleOuter = Freeze(Color.FromArgb(0x66, 0x2E, 0xE6, 0xC8));
+    private static readonly Brush DragStroke = Freeze(Color.FromArgb(0xF0, 0xA9, 0x8B, 0xFF));
+    private static readonly Brush DragOuter = Freeze(Color.FromArgb(0x70, 0xA9, 0x8B, 0xFF));
+
     private Point _start;
     private bool _dragging;
     public CaptureRegion? Result { get; private set; }
@@ -13,7 +19,22 @@ public partial class RegionPickerWindow : Window
     public RegionPickerWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) => Keyboard.Focus(Root);
+        Loaded += (_, _) =>
+        {
+            Keyboard.Focus(Root);
+            PlaceCursor(new Point(ActualWidth / 2, ActualHeight / 2));
+        };
+    }
+
+    /// <summary>Non-interactive preview used by --screenshot.</summary>
+    public void ShowPreviewDemo(Point cursor, Rect selection)
+    {
+        Cursor = Cursors.Arrow;
+        Hint.Text = "Select Combat Text region — drag to select, Esc to cancel";
+        Selection.Visibility = Visibility.Visible;
+        CanvasSet(selection.X, selection.Y, selection.Width, selection.Height);
+        SetDraggingLook(true);
+        PlaceCursor(cursor);
     }
 
     public static CaptureRegion? Pick(Window owner, string hint)
@@ -29,13 +50,17 @@ public partial class RegionPickerWindow : Window
         _start = e.GetPosition(Root);
         Selection.Visibility = Visibility.Visible;
         CanvasSet(_start.X, _start.Y, 0, 0);
+        SetDraggingLook(true);
+        PlaceCursor(_start);
         Root.CaptureMouse();
     }
 
     private void Root_MouseMove(object sender, MouseEventArgs e)
     {
-        if (!_dragging) return;
         var pos = e.GetPosition(Root);
+        PlaceCursor(pos);
+
+        if (!_dragging) return;
         var x = Math.Min(_start.X, pos.X);
         var y = Math.Min(_start.Y, pos.Y);
         var w = Math.Abs(pos.X - _start.X);
@@ -48,6 +73,7 @@ public partial class RegionPickerWindow : Window
         if (!_dragging) return;
         _dragging = false;
         Root.ReleaseMouseCapture();
+        SetDraggingLook(false);
 
         var pos = e.GetPosition(Root);
         var x = Math.Min(_start.X, pos.X);
@@ -85,6 +111,23 @@ public partial class RegionPickerWindow : Window
         }
     }
 
+    private void PlaceCursor(Point pos)
+    {
+        InnerTx.X = pos.X - CursorInner.Width / 2;
+        InnerTx.Y = pos.Y - CursorInner.Height / 2;
+        OuterTx.X = pos.X - CursorOuter.Width / 2;
+        OuterTx.Y = pos.Y - CursorOuter.Height / 2;
+        DotTx.X = pos.X - CursorDot.Width / 2;
+        DotTx.Y = pos.Y - CursorDot.Height / 2;
+    }
+
+    private void SetDraggingLook(bool dragging)
+    {
+        CursorInner.Stroke = dragging ? DragStroke : IdleStroke;
+        CursorOuter.Stroke = dragging ? DragOuter : IdleOuter;
+        Selection.Stroke = dragging ? DragStroke : IdleStroke;
+    }
+
     private void CanvasSet(double x, double y, double w, double h)
     {
         Selection.Width = w;
@@ -92,5 +135,12 @@ public partial class RegionPickerWindow : Window
         Selection.Margin = new Thickness(x, y, 0, 0);
         Selection.HorizontalAlignment = HorizontalAlignment.Left;
         Selection.VerticalAlignment = VerticalAlignment.Top;
+    }
+
+    private static SolidColorBrush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 }

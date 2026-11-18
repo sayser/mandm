@@ -5,8 +5,13 @@
         Height="460" Width="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="#FF071624">
-  <DockPanel Margin="18">
+        Background="#FF061522">
+  <Grid>
+    <Ellipse Width="420" Height="240" Fill="#1239D3C2" HorizontalAlignment="Right"
+             VerticalAlignment="Top" Margin="0,-120,-60,0" IsHitTestVisible="False">
+      <Ellipse.Effect><BlurEffect Radius="80"/></Ellipse.Effect>
+    </Ellipse>
+    <DockPanel Margin="18">
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
       <Button Content="Cancel" Width="100" Margin="0,0,8,0" Click="Cancel_Click"/>
       <Button Style="{StaticResource PrimaryButton}" Content="Save" Width="100" Click="Save_Click"/>
@@ -18,7 +23,7 @@
           <TextBlock Text="◉" FontSize="22" Foreground="#57A99F" Margin="0,0,10,0" VerticalAlignment="Center"/>
           <StackPanel>
             <TextBlock Text="CAPTURE REGIONS" Style="{StaticResource SectionLabel}" FontSize="15"/>
-            <TextBlock Text="Drag rectangles over in-game Abilities and Combat Text windows"
+            <TextBlock Text="Drag rectangles over in-game Abilities and Combat Text windows — pointer circle marks the cursor"
                        Foreground="#66879D" FontSize="10"/>
           </StackPanel>
         </StackPanel>
@@ -53,5 +58,6 @@
         <TextBox Name="TxtSettingsPath" IsReadOnly="True" FontSize="11" Foreground="#7899AD"/>
       </StackPanel>
     </Border>
-  </DockPanel>
+    </DockPanel>
+  </Grid>
 </Window>

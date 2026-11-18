@@ -79,6 +79,26 @@ public partial class App : Application
         DoEvents();
         SaveWindowPng(options, Path.Combine(outDir, "options.png"));
 
+        // Region picker with EQDM-style pointer circle staged for the shot.
+        var picker = new RegionPickerWindow
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            WindowState = WindowState.Normal,
+            Left = 40,
+            Top = 40,
+            Width = 960,
+            Height = 540,
+            Topmost = false,
+            ShowActivated = false
+        };
+        picker.Show();
+        picker.UpdateLayout();
+        DoEvents();
+        picker.ShowPreviewDemo(new Point(520, 300), new Rect(280, 180, 360, 160));
+        DoEvents();
+        SaveWindowPng(picker, Path.Combine(outDir, "region-picker-mouse-circle.png"));
+
+        picker.Close();
         options.Close();
         overlay.Close();
         main.Close();

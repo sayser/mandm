@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using System.Windows.Media;
 using MandM.Models;
 using MandM.Services;
 
@@ -6,6 +7,9 @@ namespace MandM;
 
 public partial class MainWindow : Window
 {
+    private static readonly Brush OcrOnlineBrush = Freeze(Color.FromRgb(0x39, 0xE0, 0xCC));
+    private static readonly Brush OcrOfflineBrush = Freeze(Color.FromRgb(0xFF, 0x5E, 0x70));
+
     private OverlayWindow? _overlay;
 
     public MainWindow()
@@ -17,20 +21,31 @@ public partial class MainWindow : Window
         RefreshBuffList();
         UpdateOverlayButton();
         UpdateActiveEmptyState();
+        RefreshStatusPills();
 
-        App.State.Monitor.StatusChanged += s => Dispatcher.Invoke(() => TxtStatus.Text = s);
+        App.State.Monitor.StatusChanged += s => Dispatcher.Invoke(() =>
+        {
+            TxtStatus.Text = s;
+            RefreshStatusPills();
+        });
         App.State.Monitor.CombatPreviewChanged += s => Dispatcher.Invoke(() => TxtCombatPreview.Text = s);
         App.State.Tracker.Changed += () => Dispatcher.Invoke(() =>
         {
             RefreshBuffList();
             UpdateActiveEmptyState();
+            RefreshStatusPills();
         });
         App.State.Tracker.ActiveBuffs.CollectionChanged += (_, _) =>
-            Dispatcher.Invoke(UpdateActiveEmptyState);
+            Dispatcher.Invoke(() =>
+            {
+                UpdateActiveEmptyState();
+                RefreshStatusPills();
+            });
 
         TxtStatus.Text = App.State.Ocr.IsAvailable
             ? App.State.Monitor.Status
             : App.State.Ocr.UnavailableReason ?? "OCR unavailable";
+        RefreshStatusPills();
 
         if (App.State.Settings.OverlayEnabled)
             ShowOverlay(true);
@@ -63,12 +78,37 @@ public partial class MainWindow : Window
     {
         var on = App.State.Settings.OverlayEnabled;
         BtnOverlay.Content = on ? "Overlay: On" : "Overlay: Off";
+        RefreshStatusPills();
     }
 
     private void UpdateActiveEmptyState() =>
         TxtNoActive.Visibility = App.State.Tracker.ActiveBuffs.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+    private void RefreshStatusPills()
+    {
+        var ocrOk = App.State.Ocr.IsAvailable;
+        OcrDot.Fill = ocrOk ? OcrOnlineBrush : OcrOfflineBrush;
+        TxtOcrPill.Text = ocrOk
+            ? (string.IsNullOrWhiteSpace(App.State.Monitor.Status) ? "Live" : Truncate(App.State.Monitor.Status, 28))
+            : "Unavailable";
+        TxtOverlayPill.Text = App.State.Settings.OverlayEnabled ? "On" : "Off";
+        TxtOverlayPill.Foreground = App.State.Settings.OverlayEnabled
+            ? OcrOnlineBrush
+            : new SolidColorBrush(Color.FromRgb(0x89, 0xA9, 0xC1));
+        TxtActivePill.Text = App.State.Tracker.ActiveBuffs.Count.ToString();
+    }
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..(max - 1)] + "…";
+
+    private static SolidColorBrush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     private void Overlay_Click(object sender, RoutedEventArgs e)
     {

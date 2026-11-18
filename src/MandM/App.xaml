@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Startup="Application_Startup">
   <Application.Resources>
-    <!-- EQDM-inspired palette (style only) -->
+    <!-- EQDM palette / chrome (style only) -->
     <Color x:Key="WindowBgColor">#061522</Color>
     <Color x:Key="SurfaceRaisedColor">#18233B</Color>
     <Color x:Key="BorderColor">#56839C</Color>
@@ -46,7 +46,7 @@
       <Setter Property="Background" Value="{StaticResource GlassPanelBrush}"/>
       <Setter Property="BorderBrush" Value="#56839C"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="CornerRadius" Value="20"/>
       <Setter Property="Padding" Value="16"/>
       <Setter Property="Effect">
         <Setter.Value>
@@ -61,6 +61,16 @@
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Padding" Value="12"/>
+    </Style>
+
+    <Style x:Key="StatusPill" TargetType="Border">
+      <Setter Property="Background" Value="#BA081F31"/>
+      <Setter Property="BorderBrush" Value="#4F7891"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Padding" Value="12,6"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
     <Style x:Key="SectionLabel" TargetType="TextBlock">
@@ -112,7 +122,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="8"
+                    CornerRadius="10"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
@@ -140,13 +150,43 @@
       <Setter Property="Foreground" Value="#FFFFFF"/>
     </Style>
 
-    <Style x:Key="HeaderActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Padding" Value="12,6"/>
-      <Setter Property="FontSize" Value="11"/>
-      <Setter Property="MinWidth" Value="100"/>
+    <Style x:Key="HeaderActionButton" TargetType="Button">
+      <Setter Property="Foreground" Value="#E8F8FF"/>
       <Setter Property="Background" Value="#78091F31"/>
       <Setter Property="BorderBrush" Value="#4F7891"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="MinWidth" Value="108"/>
       <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="16"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#A3153A50"/>
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="#57A99F"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="#55301A52"/>
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="#C9A6FF"/>
+                <Setter Property="Foreground" Value="#D8C2FF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style x:Key="PanelActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -167,11 +207,11 @@
                     CornerRadius="10"
                     Padding="{TemplateBinding Padding}">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Border x:Name="IconBox" Width="26" Height="26" CornerRadius="7"
+                <Border x:Name="IconBox" Width="28" Height="28" CornerRadius="7"
                         Background="#33081420" BorderBrush="#355B73" BorderThickness="1"
                         Margin="0,0,8,0" VerticalAlignment="Center">
                   <TextBlock x:Name="IconGlyph" Text="{TemplateBinding Tag}"
-                             FontFamily="Segoe UI Symbol" FontSize="12"
+                             FontFamily="Segoe UI Symbol" FontSize="13"
                              Foreground="#C8DCE8" HorizontalAlignment="Center"
                              VerticalAlignment="Center"/>
                 </Border>

@@ -3,11 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="#8806121C"
+        Background="#9906121C"
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
-        Cursor="Cross"
+        Cursor="None"
         WindowState="Maximized">
   <Grid Name="Root" MouseLeftButtonDown="Root_MouseLeftButtonDown"
         MouseMove="Root_MouseMove"
@@ -15,15 +15,40 @@
         KeyDown="Root_KeyDown"
         Focusable="True">
     <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,36,0,0"
-            Background="#B00C2B40" BorderBrush="#A98BFF" BorderThickness="1"
-            CornerRadius="10" Padding="18,10">
+            Background="#BA081F31" BorderBrush="#56839C" BorderThickness="1"
+            CornerRadius="16" Padding="18,10">
       <TextBlock Name="Hint" Text="Drag to select region — Esc to cancel"
                  Foreground="#E8F5FC" FontSize="14" FontWeight="SemiBold"/>
     </Border>
+
     <Rectangle Name="Selection"
                Stroke="#A98BFF" StrokeThickness="2"
                Fill="#33A98BFF"
                Visibility="Collapsed"
                IsHitTestVisible="False"/>
+
+    <!-- EQDM-style dual ring around the pointer -->
+    <Canvas IsHitTestVisible="False">
+      <Ellipse Name="CursorOuter" Width="84" Height="84"
+               Stroke="#662EE6C8" StrokeThickness="2"
+               Fill="Transparent" IsHitTestVisible="False">
+        <Ellipse.RenderTransform>
+          <TranslateTransform x:Name="OuterTx"/>
+        </Ellipse.RenderTransform>
+      </Ellipse>
+      <Ellipse Name="CursorInner" Width="48" Height="48"
+               Stroke="#E62EE6C8" StrokeThickness="3"
+               Fill="Transparent" IsHitTestVisible="False">
+        <Ellipse.RenderTransform>
+          <TranslateTransform x:Name="InnerTx"/>
+        </Ellipse.RenderTransform>
+      </Ellipse>
+      <Ellipse Name="CursorDot" Width="6" Height="6"
+               Fill="#E8F5FC" IsHitTestVisible="False">
+        <Ellipse.RenderTransform>
+          <TranslateTransform x:Name="DotTx"/>
+        </Ellipse.RenderTransform>
+      </Ellipse>
+    </Canvas>
   </Grid>
 </Window>
