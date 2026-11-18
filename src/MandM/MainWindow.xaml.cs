@@ -13,6 +13,7 @@ public partial class MainWindow : Window
 
     private OverlayWindow? _overlay;
     private MouseHighlightOverlayWindow? _mouseHighlight;
+    private bool _mouseHighlightSuspended;
 
     public MainWindow()
     {
@@ -114,6 +115,13 @@ public partial class MainWindow : Window
         try
         {
             var settings = App.State.Settings.MouseHighlight ?? new MouseHighlightSettings();
+            if (_mouseHighlightSuspended)
+            {
+                // Keep overlay hidden while region picker needs real mouse input.
+                settings = settings.Clone();
+                settings.Enabled = false;
+            }
+
             if (settings.Enabled)
             {
                 _mouseHighlight ??= new MouseHighlightOverlayWindow();
@@ -130,6 +138,16 @@ public partial class MainWindow : Window
         }
 
         RefreshStatusPills();
+    }
+
+    /// <summary>
+    /// Region picker must own the cursor: the always-on highlight is Topmost + click-through
+    /// and blocks drag if left up during Set….
+    /// </summary>
+    public void SuspendMouseHighlight(bool suspend)
+    {
+        _mouseHighlightSuspended = suspend;
+        ApplyMouseHighlight();
     }
 
     private void ModuleTab_Checked(object sender, RoutedEventArgs e)

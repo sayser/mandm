@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None"
         AllowsTransparency="True"
-        Background="#9906121C"
+        Background="#B006121C"
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
