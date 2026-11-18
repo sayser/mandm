@@ -111,15 +111,22 @@ public partial class MainWindow : Window
 
     private void ApplyMouseHighlight()
     {
-        var settings = App.State.Settings.MouseHighlight ?? new MouseHighlightSettings();
-        if (settings.Enabled)
+        try
         {
-            _mouseHighlight ??= new MouseHighlightOverlayWindow();
-            _mouseHighlight.ApplyOptions(settings);
+            var settings = App.State.Settings.MouseHighlight ?? new MouseHighlightSettings();
+            if (settings.Enabled)
+            {
+                _mouseHighlight ??= new MouseHighlightOverlayWindow();
+                _mouseHighlight.ApplyOptions(settings);
+            }
+            else
+            {
+                _mouseHighlight?.ApplyOptions(settings);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _mouseHighlight?.ApplyOptions(settings);
+            TxtStatus.Text = $"Mouse highlight unavailable: {ex.Message}";
         }
 
         RefreshStatusPills();

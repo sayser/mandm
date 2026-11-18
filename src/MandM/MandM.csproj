@@ -12,6 +12,10 @@
     <Product>MandM</Product>
     <Description>Self-buff tracker for Monsters &amp; Memories</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF single-file needs native libs extracted or HwndSubclass hits DllNotFoundException -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
   </PropertyGroup>
 
 </Project>
