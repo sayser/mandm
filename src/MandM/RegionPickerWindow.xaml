@@ -7,8 +7,9 @@
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
-        Cursor="None"
-        WindowState="Maximized">
+        WindowStartupLocation="Manual"
+        WindowState="Normal"
+        Cursor="None">
   <Grid Name="Root" MouseLeftButtonDown="Root_MouseLeftButtonDown"
         MouseMove="Root_MouseMove"
         MouseLeftButtonUp="Root_MouseLeftButtonUp"

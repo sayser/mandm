@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using MandM.Models;
 
@@ -14,21 +16,31 @@ public partial class RegionPickerWindow : Window
 
     private Point _start;
     private bool _dragging;
+    private bool _coverVirtualScreen = true;
+
     public CaptureRegion? Result { get; private set; }
 
     public RegionPickerWindow()
     {
         InitializeComponent();
+        SourceInitialized += (_, _) =>
+        {
+            if (_coverVirtualScreen)
+                CoverVirtualScreen();
+        };
         Loaded += (_, _) =>
         {
+            if (_coverVirtualScreen)
+                CoverVirtualScreen();
             Keyboard.Focus(Root);
             PlaceCursor(new Point(ActualWidth / 2, ActualHeight / 2));
         };
     }
 
-    /// <summary>Non-interactive preview used by --screenshot.</summary>
+    /// <summary>Non-interactive preview used by --screenshot (fixed window, not full virtual desktop).</summary>
     public void ShowPreviewDemo(Point cursor, Rect selection)
     {
+        _coverVirtualScreen = false;
         Cursor = Cursors.Arrow;
         Hint.Text = "Select Combat Text region — drag to select, Esc to cancel";
         Selection.Visibility = Visibility.Visible;
@@ -39,9 +51,32 @@ public partial class RegionPickerWindow : Window
 
     public static CaptureRegion? Pick(Window owner, string hint)
     {
-        var picker = new RegionPickerWindow { Owner = owner };
-        picker.Hint.Text = $"{hint} — drag to select, Esc to cancel";
+        // Do not Owner-maximize onto one monitor — span the full virtual desktop.
+        var picker = new RegionPickerWindow
+        {
+            Owner = owner,
+            WindowStartupLocation = WindowStartupLocation.Manual
+        };
+        picker.Hint.Text = $"{hint} — drag on any monitor, Esc to cancel";
         return picker.ShowDialog() == true ? picker.Result : null;
+    }
+
+    /// <summary>
+    /// Cover every monitor (virtual desktop). Maximized only covers the owner's screen.
+    /// </summary>
+    private void CoverVirtualScreen()
+    {
+        WindowState = WindowState.Normal;
+        Left = SystemParameters.VirtualScreenLeft;
+        Top = SystemParameters.VirtualScreenTop;
+        Width = SystemParameters.VirtualScreenWidth;
+        Height = SystemParameters.VirtualScreenHeight;
+
+        // Keep the picker above the owner and on the correct Z-order across monitors.
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     private void Root_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -88,18 +123,33 @@ public partial class RegionPickerWindow : Window
             return;
         }
 
-        // Convert WPF DIPs to physical screen pixels for GDI CopyFromScreen.
-        var topLeft = PointToScreen(new Point(x, y));
-        var bottomRight = PointToScreen(new Point(x + w, y + h));
-        Result = new CaptureRegion
-        {
-            X = (int)Math.Round(topLeft.X),
-            Y = (int)Math.Round(topLeft.Y),
-            Width = Math.Max(1, (int)Math.Round(bottomRight.X - topLeft.X)),
-            Height = Math.Max(1, (int)Math.Round(bottomRight.Y - topLeft.Y))
-        };
+        // Virtual-desktop device pixels for GDI CopyFromScreen (works across monitors).
+        Result = ToVirtualScreenRegion(x, y, w, h);
         DialogResult = true;
         Close();
+    }
+
+    /// <summary>
+    /// Convert picker-local DIPs to virtual-screen pixels used by Graphics.CopyFromScreen.
+    /// </summary>
+    private CaptureRegion ToVirtualScreenRegion(double x, double y, double w, double h)
+    {
+        // PointToScreen returns device pixels in the virtual desktop coordinate space.
+        var topLeft = PointToScreen(new Point(x, y));
+        var bottomRight = PointToScreen(new Point(x + w, y + h));
+
+        var left = (int)Math.Round(Math.Min(topLeft.X, bottomRight.X));
+        var top = (int)Math.Round(Math.Min(topLeft.Y, bottomRight.Y));
+        var width = Math.Max(1, (int)Math.Round(Math.Abs(bottomRight.X - topLeft.X)));
+        var height = Math.Max(1, (int)Math.Round(Math.Abs(bottomRight.Y - topLeft.Y)));
+
+        return new CaptureRegion
+        {
+            X = left,
+            Y = top,
+            Width = width,
+            Height = height
+        };
     }
 
     private void Root_KeyDown(object sender, KeyEventArgs e)
@@ -143,4 +193,13 @@ public partial class RegionPickerWindow : Window
         brush.Freeze();
         return brush;
     }
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 }
