@@ -1,6 +1,5 @@
 using System.Collections.Specialized;
 using System.Windows;
-using System.Windows.Input;
 using MandM.Services;
 
 namespace MandM;
@@ -8,6 +7,7 @@ namespace MandM;
 public partial class OverlayWindow : Window
 {
     private readonly BuffTrackerService _tracker;
+    private readonly OverlayDragHelper _drag;
     private bool _suppressBoundsEvent;
 
     public event Action? BoundsChanged;
@@ -16,6 +16,7 @@ public partial class OverlayWindow : Window
     {
         InitializeComponent();
         _tracker = tracker;
+        _drag = new OverlayDragHelper(this, DragHandle);
         ListActive.ItemsSource = tracker.ActiveBuffs;
         tracker.ActiveBuffs.CollectionChanged += ActiveBuffsOnCollectionChanged;
         UpdateEmptyState();
@@ -43,17 +44,6 @@ public partial class OverlayWindow : Window
 
     private void UpdateEmptyState() =>
         TxtEmpty.Visibility = _tracker.ActiveBuffs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-    private void Overlay_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Allow drag from chrome; list items still receive clicks.
-    }
-
-    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            DragMove();
-    }
 
     private void Overlay_BoundsChanged(object sender, EventArgs e)
     {

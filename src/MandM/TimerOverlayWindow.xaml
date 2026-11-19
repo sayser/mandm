@@ -18,16 +18,20 @@
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
 
-      <Grid Margin="0,0,0,6" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="⏱" FontSize="16" Foreground="#2FD8C7" Margin="2,0,8,0"/>
-          <TextBlock Text="USER TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
-        </StackPanel>
-        <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
-                Width="26" Height="26" Padding="0" FontSize="13"
-                Background="#78091F31" BorderBrush="#4F7891"
-                ToolTip="Close timer overlay" Click="Close_Click"/>
-      </Grid>
+      <Border x:Name="DragHandle" Background="#33091F31" CornerRadius="8" Padding="6,4" Margin="0,0,0,6"
+              Cursor="SizeAll">
+        <Grid>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" IsHitTestVisible="False">
+            <TextBlock Text="⏱" FontSize="16" Foreground="#2FD8C7" Margin="2,0,8,0"/>
+            <TextBlock Text="USER TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
+          </StackPanel>
+          <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Width="26" Height="26" Padding="0" FontSize="13"
+                  Background="#78091F31" BorderBrush="#4F7891"
+                  Cursor="Arrow"
+                  ToolTip="Close timer overlay" Click="Close_Click"/>
+        </Grid>
+      </Border>
 
       <Grid Grid.Row="1">
         <ListBox Name="ListTimers" Background="Transparent" BorderThickness="0"

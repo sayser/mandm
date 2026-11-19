@@ -1,6 +1,5 @@
 using System.Collections.Specialized;
 using System.Windows;
-using System.Windows.Input;
 using MandM.Services;
 
 namespace MandM;
@@ -8,6 +7,7 @@ namespace MandM;
 public partial class TimerOverlayWindow : Window
 {
     private readonly UserTimerService _timers;
+    private readonly OverlayDragHelper _drag;
     private bool _suppressBoundsEvent;
 
     public event Action? BoundsChanged;
@@ -16,6 +16,7 @@ public partial class TimerOverlayWindow : Window
     {
         InitializeComponent();
         _timers = timers;
+        _drag = new OverlayDragHelper(this, DragHandle);
         ListTimers.ItemsSource = timers.Timers;
         timers.Timers.CollectionChanged += TimersOnCollectionChanged;
         UpdateEmptyState();
@@ -43,12 +44,6 @@ public partial class TimerOverlayWindow : Window
 
     private void UpdateEmptyState() =>
         TxtEmpty.Visibility = _timers.Timers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState == MouseButtonState.Pressed)
-            DragMove();
-    }
 
     private void Overlay_BoundsChanged(object sender, EventArgs e)
     {

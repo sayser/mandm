@@ -10,8 +10,7 @@
         ShowInTaskbar="False"
         ResizeMode="CanResizeWithGrip"
         LocationChanged="Overlay_BoundsChanged"
-        SizeChanged="Overlay_BoundsChanged"
-        PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
+        SizeChanged="Overlay_BoundsChanged">
   <!-- Near-invisible hit target like EQDM buff overlay -->
   <Border Background="#C8081A28" BorderBrush="#56839C" BorderThickness="1" CornerRadius="14" Padding="8,6">
     <Grid>
@@ -20,16 +19,21 @@
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
 
-      <Grid Margin="0,0,0,6" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="◈" FontSize="16" Foreground="#A98BFF" Margin="2,0,8,0"/>
-          <TextBlock Text="BUFF TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
-        </StackPanel>
-        <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
-                Width="26" Height="26" Padding="0" FontSize="13"
-                Background="#78091F31" BorderBrush="#4F7891"
-                ToolTip="Close buff overlay" Click="Close_Click"/>
-      </Grid>
+      <!-- Solid background so the full title strip is a drag hit-target -->
+      <Border x:Name="DragHandle" Background="#33091F31" CornerRadius="8" Padding="6,4" Margin="0,0,0,6"
+              Cursor="SizeAll">
+        <Grid>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" IsHitTestVisible="False">
+            <TextBlock Text="◈" FontSize="16" Foreground="#A98BFF" Margin="2,0,8,0"/>
+            <TextBlock Text="BUFF TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
+          </StackPanel>
+          <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Width="26" Height="26" Padding="0" FontSize="13"
+                  Background="#78091F31" BorderBrush="#4F7891"
+                  Cursor="Arrow"
+                  ToolTip="Close buff overlay" Click="Close_Click"/>
+        </Grid>
+      </Border>
 
       <Grid Grid.Row="1">
         <ListBox Name="ListActive" Background="Transparent" BorderThickness="0"
