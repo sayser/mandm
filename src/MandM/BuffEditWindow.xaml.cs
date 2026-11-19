@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using MandM.Models;
 using MandM.Services;
@@ -13,6 +14,14 @@ public partial class BuffEditWindow : Window
     {
         InitializeComponent();
         Result = def;
+        SettingsService.MigrateAndNormalize(App.State.Settings);
+
+        var regions = App.State.Settings.CaptureRegions.ToList();
+        BindRegionCombo(CmbCastRegion, regions, def.CastRegionId);
+        BindRegionCombo(CmbLandRegion, regions, def.LandRegionId);
+        BindRegionCombo(CmbFadeRegion, regions, def.FadeRegionId);
+        BindRegionCombo(CmbWarnRegion, regions, def.WarnRegionId);
+
         ChkEnabled.IsChecked = def.Enabled;
         TxtName.Text = def.Name;
         TxtDurationMin.Text = (def.DurationSeconds / 60.0).ToString("0.##");
@@ -20,9 +29,26 @@ public partial class BuffEditWindow : Window
         TxtCast.Text = def.CastText;
         TxtLand.Text = def.LandText;
         TxtFade.Text = def.FadeText;
+        TxtWarn.Text = def.WarnText;
         CmbSound.ItemsSource = AlarmService.BuiltInSounds;
         CmbSound.Text = def.AlarmSound;
     }
+
+    private static void BindRegionCombo(ComboBox combo, List<NamedCaptureRegion> regions, string? selectedId)
+    {
+        combo.ItemsSource = regions;
+        var fallback = regions.FirstOrDefault(r =>
+                            string.Equals(r.Name, "Combat Text", StringComparison.OrdinalIgnoreCase))
+                       ?? regions.FirstOrDefault();
+        var match = regions.FirstOrDefault(r => string.Equals(r.Id, selectedId, StringComparison.Ordinal))
+                    ?? fallback;
+        combo.SelectedItem = match;
+    }
+
+    private static string SelectedRegionId(ComboBox combo) =>
+        (combo.SelectedItem as NamedCaptureRegion)?.Id
+        ?? combo.SelectedValue as string
+        ?? string.Empty;
 
     private void BrowseSound_Click(object sender, RoutedEventArgs e)
     {
@@ -67,6 +93,13 @@ public partial class BuffEditWindow : Window
             return;
         }
 
+        if (App.State.Settings.CaptureRegions.Count == 0)
+        {
+            MessageBox.Show(this, "Add a capture region in Options first.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         Result.Enabled = ChkEnabled.IsChecked == true;
         Result.Name = TxtName.Text.Trim();
         Result.DurationSeconds = (int)Math.Round(minutes * 60);
@@ -74,6 +107,11 @@ public partial class BuffEditWindow : Window
         Result.CastText = TxtCast.Text.Trim();
         Result.LandText = TxtLand.Text.Trim();
         Result.FadeText = TxtFade.Text.Trim();
+        Result.WarnText = TxtWarn.Text.Trim();
+        Result.CastRegionId = SelectedRegionId(CmbCastRegion);
+        Result.LandRegionId = SelectedRegionId(CmbLandRegion);
+        Result.FadeRegionId = SelectedRegionId(CmbFadeRegion);
+        Result.WarnRegionId = SelectedRegionId(CmbWarnRegion);
         Result.AlarmSound = string.IsNullOrWhiteSpace(CmbSound.Text) ? "Exclamation" : CmbSound.Text.Trim();
         DialogResult = true;
         Close();

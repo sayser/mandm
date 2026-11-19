@@ -160,7 +160,7 @@
                 <StackPanel>
                   <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"
                              TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="Timers start when Land text is seen in Combat Text OCR"
+                  <TextBlock Text="Timers start when Land text is seen in the buff’s chosen capture region"
                              Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
                 </StackPanel>
               </StackPanel>
@@ -332,7 +332,7 @@
             </ListBox>
 
             <TextBlock Grid.Row="7" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
-                       Text="Matching is case-insensitive contains on OCR’d Combat Text (punctuation tolerant)."/>
+                       Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set."/>
           </Grid>
         </Border>
 

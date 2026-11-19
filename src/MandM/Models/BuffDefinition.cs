@@ -6,11 +6,20 @@ public sealed class BuffDefinition
     public string Name { get; set; } = string.Empty;
     /// <summary>Full buff duration in seconds.</summary>
     public int DurationSeconds { get; set; }
-    /// <summary>Warn when remaining seconds ≤ this value.</summary>
+    /// <summary>Warn when remaining seconds ≤ this value (used when WarnText is empty).</summary>
     public int WarnSeconds { get; set; } = 60;
     public string CastText { get; set; } = string.Empty;
     public string LandText { get; set; } = string.Empty;
     public string FadeText { get; set; } = string.Empty;
+    /// <summary>Optional OCR phrase that fires the alarm immediately (e.g. invis drop warning).</summary>
+    public string WarnText { get; set; } = string.Empty;
+
+    /// <summary>Named capture region ids to watch for each match line.</summary>
+    public string CastRegionId { get; set; } = string.Empty;
+    public string LandRegionId { get; set; } = string.Empty;
+    public string FadeRegionId { get; set; } = string.Empty;
+    public string WarnRegionId { get; set; } = string.Empty;
+
     /// <summary>Built-in sound id (Beep, Asterisk, Exclamation, Hand, Question) or absolute .wav path.</summary>
     public string AlarmSound { get; set; } = "Exclamation";
     public bool Enabled { get; set; } = true;
@@ -20,7 +29,10 @@ public sealed class BuffDefinition
             ? $"{DurationSeconds / 60.0:0.#}m"
             : $"{DurationSeconds}s";
 
-    public string WarnDisplay => $"{WarnSeconds}s";
+    public string WarnDisplay =>
+        string.IsNullOrWhiteSpace(WarnText)
+            ? $"{WarnSeconds}s"
+            : "text";
 
     public string StatusDisplay => Enabled ? "Enabled" : "Disabled";
 
@@ -33,6 +45,11 @@ public sealed class BuffDefinition
         CastText = CastText,
         LandText = LandText,
         FadeText = FadeText,
+        WarnText = WarnText,
+        CastRegionId = CastRegionId,
+        LandRegionId = LandRegionId,
+        FadeRegionId = FadeRegionId,
+        WarnRegionId = WarnRegionId,
         AlarmSound = AlarmSound,
         Enabled = Enabled
     };
@@ -45,6 +62,7 @@ public sealed class BuffDefinition
         CastText = "You begin casting Speed of the Pack",
         LandText = "You feel the speed of the pack within you",
         FadeText = "Your bestial speed fades",
+        WarnText = string.Empty,
         AlarmSound = "Exclamation",
         Enabled = true
     };

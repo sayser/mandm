@@ -295,11 +295,17 @@ public partial class MainWindow : Window
 
     private void AddBuff_Click(object sender, RoutedEventArgs e)
     {
+        SettingsService.MigrateAndNormalize(App.State.Settings);
+        var regionId = App.State.Settings.DefaultBuffRegionId() ?? string.Empty;
         var def = new BuffDefinition
         {
             Name = "New Buff",
             DurationSeconds = 60 * 10,
-            WarnSeconds = 60
+            WarnSeconds = 60,
+            CastRegionId = regionId,
+            LandRegionId = regionId,
+            FadeRegionId = regionId,
+            WarnRegionId = regionId
         };
         var dlg = new BuffEditWindow(def) { Owner = this };
         if (dlg.ShowDialog() == true)

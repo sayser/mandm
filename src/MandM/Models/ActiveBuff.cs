@@ -48,7 +48,12 @@ public sealed class ActiveBuff : INotifyPropertyChanged
         }
     }
 
-    public bool IsWarning => Remaining.TotalSeconds <= Definition.WarnSeconds && Remaining > TimeSpan.Zero;
+    public bool IsWarning =>
+        Remaining > TimeSpan.Zero
+        && (Warned
+            || (string.IsNullOrWhiteSpace(Definition.WarnText)
+                && Remaining.TotalSeconds <= Definition.WarnSeconds));
+
 
     public double Progress
     {

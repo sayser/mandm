@@ -2,9 +2,13 @@ namespace MandM.Models;
 
 public sealed class AppSettings
 {
-    public int Version { get; set; } = 1;
-    public CaptureRegion AbilitiesRegion { get; set; } = new();
-    public CaptureRegion CombatTextRegion { get; set; } = new();
+    public int Version { get; set; } = 2;
+
+    /// <summary>Legacy single regions — migrated into <see cref="CaptureRegions"/> on load.</summary>
+    public CaptureRegion? AbilitiesRegion { get; set; }
+    public CaptureRegion? CombatTextRegion { get; set; }
+
+    public List<NamedCaptureRegion> CaptureRegions { get; set; } = [];
     public List<BuffDefinition> Buffs { get; set; } = [];
     public List<UserTimerDefinition> UserTimers { get; set; } = [];
 
@@ -27,7 +31,38 @@ public sealed class AppSettings
     public static AppSettings CreateDefault()
     {
         var settings = new AppSettings();
-        settings.Buffs.Add(BuffDefinition.CreateSpeedOfThePackSeed());
+        var abilities = new NamedCaptureRegion { Name = "Abilities" };
+        var combat = new NamedCaptureRegion { Name = "Combat Text" };
+        settings.CaptureRegions.Add(abilities);
+        settings.CaptureRegions.Add(combat);
+
+        var seed = BuffDefinition.CreateSpeedOfThePackSeed();
+        seed.CastRegionId = combat.Id;
+        seed.LandRegionId = combat.Id;
+        seed.FadeRegionId = combat.Id;
+        seed.WarnRegionId = combat.Id;
+        settings.Buffs.Add(seed);
         return settings;
+    }
+
+    public NamedCaptureRegion? FindRegion(string? id) =>
+        string.IsNullOrWhiteSpace(id)
+            ? null
+            : CaptureRegions.FirstOrDefault(r =>
+                string.Equals(r.Id, id, StringComparison.Ordinal));
+
+    public NamedCaptureRegion? FindRegionByName(string name) =>
+        CaptureRegions.FirstOrDefault(r =>
+            string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Prefer Combat Text, else first non-Abilities region, else first region.</summary>
+    public string? DefaultBuffRegionId()
+    {
+        var combat = FindRegionByName("Combat Text");
+        if (combat is not null) return combat.Id;
+
+        var other = CaptureRegions.FirstOrDefault(r =>
+            !string.Equals(r.Name, "Abilities", StringComparison.OrdinalIgnoreCase));
+        return other?.Id ?? CaptureRegions.FirstOrDefault()?.Id;
     }
 }

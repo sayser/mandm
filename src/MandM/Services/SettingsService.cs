@@ -42,9 +42,9 @@ public sealed class SettingsService
 
             settings.Buffs ??= [];
             settings.UserTimers ??= [];
-            settings.AbilitiesRegion ??= new CaptureRegion();
-            settings.CombatTextRegion ??= new CaptureRegion();
+            settings.CaptureRegions ??= [];
             settings.MouseHighlight ??= new MouseHighlightSettings();
+            MigrateAndNormalize(settings);
 
             // Always persist to the stable location (and out of Temp\.net\…).
             if (!PathsEqual(source, SettingsPath))
@@ -60,12 +60,73 @@ public sealed class SettingsService
 
     public void Save(AppSettings settings)
     {
+        MigrateAndNormalize(settings);
+
         var dir = Path.GetDirectoryName(SettingsPath);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(SettingsPath, json);
+    }
+
+    /// <summary>
+    /// Fold legacy Abilities / Combat Text rectangles into <see cref="AppSettings.CaptureRegions"/>
+    /// and ensure every buff match line has a region id.
+    /// </summary>
+    public static void MigrateAndNormalize(AppSettings settings)
+    {
+        settings.CaptureRegions ??= [];
+        settings.Buffs ??= [];
+        settings.UserTimers ??= [];
+        settings.MouseHighlight ??= new MouseHighlightSettings();
+
+        if (settings.CaptureRegions.Count == 0)
+        {
+            settings.CaptureRegions.Add(new NamedCaptureRegion
+            {
+                Name = "Abilities",
+                Region = settings.AbilitiesRegion?.Clone() ?? new CaptureRegion()
+            });
+            settings.CaptureRegions.Add(new NamedCaptureRegion
+            {
+                Name = "Combat Text",
+                Region = settings.CombatTextRegion?.Clone() ?? new CaptureRegion()
+            });
+        }
+        else
+        {
+            // Keep legacy fields mirrored for older readers / partial upgrades.
+            var abilities = settings.FindRegionByName("Abilities");
+            if (abilities is not null)
+                settings.AbilitiesRegion = abilities.Region.Clone();
+            var combat = settings.FindRegionByName("Combat Text");
+            if (combat is not null)
+                settings.CombatTextRegion = combat.Region.Clone();
+        }
+
+        foreach (var region in settings.CaptureRegions)
+        {
+            if (string.IsNullOrWhiteSpace(region.Id))
+                region.Id = Guid.NewGuid().ToString("N");
+            region.Name = string.IsNullOrWhiteSpace(region.Name) ? "New Region" : region.Name.Trim();
+            region.Region ??= new CaptureRegion();
+        }
+
+        var defaultRegionId = settings.DefaultBuffRegionId() ?? string.Empty;
+        foreach (var buff in settings.Buffs)
+        {
+            buff.CastText ??= string.Empty;
+            buff.LandText ??= string.Empty;
+            buff.FadeText ??= string.Empty;
+            buff.WarnText ??= string.Empty;
+            if (string.IsNullOrWhiteSpace(buff.CastRegionId)) buff.CastRegionId = defaultRegionId;
+            if (string.IsNullOrWhiteSpace(buff.LandRegionId)) buff.LandRegionId = defaultRegionId;
+            if (string.IsNullOrWhiteSpace(buff.FadeRegionId)) buff.FadeRegionId = defaultRegionId;
+            if (string.IsNullOrWhiteSpace(buff.WarnRegionId)) buff.WarnRegionId = defaultRegionId;
+        }
+
+        settings.Version = Math.Max(settings.Version, 2);
     }
 
     /// <summary>

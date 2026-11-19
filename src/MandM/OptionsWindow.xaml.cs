@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -18,18 +19,19 @@ public partial class OptionsWindow : Window
         ("#7FC6FF", "Sky"),
     ];
 
-    private CaptureRegion _abilities;
-    private CaptureRegion _combat;
+    private readonly ObservableCollection<NamedCaptureRegion> _regions = [];
     private bool _suppressUi;
 
     public OptionsWindow()
     {
         InitializeComponent();
         var s = App.State.Settings;
-        _abilities = s.AbilitiesRegion.Clone();
-        _combat = s.CombatTextRegion.Clone();
-        TxtAbilities.Text = _abilities.ToString();
-        TxtCombat.Text = _combat.ToString();
+        Services.SettingsService.MigrateAndNormalize(s);
+
+        foreach (var region in s.CaptureRegions)
+            _regions.Add(region.Clone());
+        ListRegions.ItemsSource = _regions;
+
         TxtInterval.Text = s.OcrIntervalMs.ToString();
         TxtSettingsPath.Text = App.State.SettingsService.SettingsPath;
 
@@ -149,20 +151,74 @@ public partial class OptionsWindow : Window
         SecondSizePanel.Opacity = on ? 1 : 0.45;
     }
 
-    private void SetAbilities_Click(object sender, RoutedEventArgs e)
+    private void RefreshRegionList()
     {
-        var region = RegionPickerWindow.Pick(this, "Select Abilities region");
-        if (region is null) return;
-        _abilities = region;
-        TxtAbilities.Text = _abilities.ToString();
+        var selected = ListRegions.SelectedItem;
+        ListRegions.Items.Refresh();
+        ListRegions.SelectedItem = selected;
     }
 
-    private void SetCombat_Click(object sender, RoutedEventArgs e)
+    private void AddRegion_Click(object sender, RoutedEventArgs e)
     {
-        var region = RegionPickerWindow.Pick(this, "Select Combat Text region");
-        if (region is null) return;
-        _combat = region;
-        TxtCombat.Text = _combat.ToString();
+        var name = NamePromptWindow.Prompt(this, "Add capture region", "Region name", "New Region");
+        if (name is null) return;
+
+        var region = new NamedCaptureRegion { Name = name };
+        _regions.Add(region);
+        ListRegions.SelectedItem = region;
+    }
+
+    private void RenameRegion_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListRegions.SelectedItem is not NamedCaptureRegion selected)
+        {
+            MessageBox.Show(this, "Select a region to rename.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var name = NamePromptWindow.Prompt(this, "Rename region", "Region name", selected.Name);
+        if (name is null) return;
+        selected.Name = name;
+        RefreshRegionList();
+    }
+
+    private void SetRegion_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListRegions.SelectedItem is not NamedCaptureRegion selected)
+        {
+            MessageBox.Show(this, "Select a region, then click Set… to drag its rectangle.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var picked = RegionPickerWindow.Pick(this, $"Select {selected.Name} region");
+        if (picked is null) return;
+        selected.Region = picked;
+        RefreshRegionList();
+    }
+
+    private void RemoveRegion_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListRegions.SelectedItem is not NamedCaptureRegion selected)
+        {
+            MessageBox.Show(this, "Select a region to remove.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (_regions.Count <= 1)
+        {
+            MessageBox.Show(this, "Keep at least one capture region.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirm = MessageBox.Show(this,
+            $"Remove region “{selected.Name}”?",
+            "MandM", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+        _regions.Remove(selected);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -174,10 +230,23 @@ public partial class OptionsWindow : Window
             return;
         }
 
-        App.State.Settings.AbilitiesRegion = _abilities;
-        App.State.Settings.CombatTextRegion = _combat;
+        if (_regions.Count == 0)
+        {
+            MessageBox.Show(this, "Add at least one capture region.", "MandM",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        App.State.Settings.CaptureRegions = _regions.Select(r => r.Clone()).ToList();
         App.State.Settings.OcrIntervalMs = interval;
         App.State.Settings.MouseHighlight = ReadMouseHighlight();
+
+        // Mirror legacy fields from named list.
+        var abilities = App.State.Settings.FindRegionByName("Abilities");
+        App.State.Settings.AbilitiesRegion = abilities?.Region.Clone() ?? new CaptureRegion();
+        var combat = App.State.Settings.FindRegionByName("Combat Text");
+        App.State.Settings.CombatTextRegion = combat?.Region.Clone() ?? new CaptureRegion();
+
         App.State.SaveSettings();
         App.State.Monitor.Start();
         DialogResult = true;

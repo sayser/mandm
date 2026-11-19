@@ -14,6 +14,7 @@ public sealed class BuffTrackerService : IDisposable
     private Dictionary<string, int> _previousLandCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
     /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
     private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
@@ -39,73 +40,115 @@ public sealed class BuffTrackerService : IDisposable
             _previousLandCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousWarnCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _armedFromCast.Clear();
         }
     }
 
-    public void ProcessCombatLines(IEnumerable<string> lines)
+    /// <summary>OCR lines from one named capture region.</summary>
+    public void ProcessRegionLines(string regionId, IEnumerable<string> lines)
     {
-        // Preserve duplicate rows — a recast often OCR's the same land string again.
+        if (string.IsNullOrWhiteSpace(regionId))
+            return;
+
         var entries = lines
             .Select(raw => (raw ?? string.Empty).Trim())
             .Where(raw => raw.Length > 0)
             .ToList();
-
         var blob = string.Join("\n", entries);
-        var landCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-        var fadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-        var castCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
         {
-            landCounts[def.Id] = CountMatches(entries, blob, def.LandText);
-            fadeCounts[def.Id] = CountMatches(entries, blob, def.FadeText);
-            castCounts[def.Id] = CountMatches(entries, blob, def.CastText);
-        }
-
-        Dictionary<string, int> prevLand;
-        Dictionary<string, int> prevFade;
-        Dictionary<string, int> prevCast;
-        lock (_gate)
-        {
-            prevLand = _previousLandCounts;
-            prevFade = _previousFadeCounts;
-            prevCast = _previousCastCounts;
-            _previousLandCounts = landCounts;
-            _previousFadeCounts = fadeCounts;
-            _previousCastCounts = castCounts;
-        }
-
-        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
-        {
-            var fadeNow = fadeCounts.GetValueOrDefault(def.Id);
-            var fadeWas = prevFade.GetValueOrDefault(def.Id);
-            if (fadeNow > fadeWas)
-                ClearBuff(def.Id);
-
-            var castNow = castCounts.GetValueOrDefault(def.Id);
-            var castWas = prevCast.GetValueOrDefault(def.Id);
-            if (castNow > castWas)
+            if (RegionEquals(def.FadeRegionId, regionId))
             {
+                var fadeNow = CountMatches(entries, blob, def.FadeText);
+                int fadeWas;
                 lock (_gate)
-                    _armedFromCast.Add(def.Id);
+                {
+                    fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
+                    _previousFadeCounts[def.Id] = fadeNow;
+                }
+
+                if (fadeNow > fadeWas)
+                    ClearBuff(def.Id);
             }
 
-            var landNow = landCounts.GetValueOrDefault(def.Id);
-            var landWas = prevLand.GetValueOrDefault(def.Id);
+            if (RegionEquals(def.CastRegionId, regionId))
+            {
+                var castNow = CountMatches(entries, blob, def.CastText);
+                int castWas;
+                lock (_gate)
+                {
+                    castWas = _previousCastCounts.GetValueOrDefault(def.Id);
+                    _previousCastCounts[def.Id] = castNow;
+                }
 
-            // 1) New land line appearance (count went up) — including recast while active.
-            var newLandOccurrence = landNow > landWas;
-            // 2) Cast was seen, then land is visible (handles sticky identical land OCR that
-            //    never increases count when the old land line is still on screen).
-            bool castArmedLand;
-            lock (_gate)
-                castArmedLand = landNow > 0 && _armedFromCast.Remove(def.Id);
+                if (castNow > castWas)
+                {
+                    lock (_gate)
+                        _armedFromCast.Add(def.Id);
+                }
+            }
 
-            if (newLandOccurrence || castArmedLand)
-                LandBuff(def);
+            if (RegionEquals(def.LandRegionId, regionId))
+            {
+                var landNow = CountMatches(entries, blob, def.LandText);
+                int landWas;
+                lock (_gate)
+                {
+                    landWas = _previousLandCounts.GetValueOrDefault(def.Id);
+                    _previousLandCounts[def.Id] = landNow;
+                }
+
+                var newLandOccurrence = landNow > landWas;
+                bool castArmedLand;
+                lock (_gate)
+                    castArmedLand = landNow > 0 && _armedFromCast.Remove(def.Id);
+
+                if (newLandOccurrence || castArmedLand)
+                    LandBuff(def);
+            }
+
+            if (RegionEquals(def.WarnRegionId, regionId) && !string.IsNullOrWhiteSpace(def.WarnText))
+            {
+                var warnNow = CountMatches(entries, blob, def.WarnText);
+                int warnWas;
+                lock (_gate)
+                {
+                    warnWas = _previousWarnCounts.GetValueOrDefault(def.Id);
+                    _previousWarnCounts[def.Id] = warnNow;
+                }
+
+                if (warnNow > warnWas)
+                    TriggerWarnFromText(def);
+            }
         }
     }
+
+    private void TriggerWarnFromText(BuffDefinition def)
+    {
+        void Apply()
+        {
+            var active = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            if (active is null)
+                return;
+            if (active.Warned)
+                return;
+
+            active.Warned = true;
+            _alarms.Play(def.AlarmSound);
+            Changed?.Invoke();
+        }
+
+        if (Application.Current?.Dispatcher.CheckAccess() == true)
+            Apply();
+        else
+            Application.Current?.Dispatcher.Invoke(Apply);
+    }
+
+    private static bool RegionEquals(string? configured, string regionId) =>
+        !string.IsNullOrWhiteSpace(configured)
+        && string.Equals(configured, regionId, StringComparison.Ordinal);
 
     private static int CountMatches(List<string> entries, string blob, string? needle)
     {
@@ -113,7 +156,6 @@ public sealed class BuffTrackerService : IDisposable
             return 0;
 
         var count = entries.Count(line => TextMatch.ContainsLoose(line, needle));
-        // Phrase split across OCR lines: one presence if the joined frame matches.
         if (count == 0 && TextMatch.ContainsLoose(blob, needle))
             return 1;
         return count;
@@ -149,7 +191,6 @@ public sealed class BuffTrackerService : IDisposable
             if (existing is not null)
                 ActiveBuffs.Remove(existing);
 
-            // Always restart from full duration — even when already active.
             ActiveBuffs.Add(new ActiveBuff
             {
                 Definition = def,
@@ -197,7 +238,10 @@ public sealed class BuffTrackerService : IDisposable
             if (remaining <= TimeSpan.Zero)
                 continue;
 
-            if (!buff.Warned && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
+            // Time-based warn only when no warn OCR phrase is configured.
+            if (string.IsNullOrWhiteSpace(buff.Definition.WarnText)
+                && !buff.Warned
+                && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
             {
                 buff.Warned = true;
                 _alarms.Play(buff.Definition.AlarmSound);

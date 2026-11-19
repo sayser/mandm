@@ -3,7 +3,7 @@ using MandM.Models;
 namespace MandM.Services;
 
 /// <summary>
-/// Periodically OCR's Combat Text and Abilities capture regions.
+/// Periodically OCR's every named capture region.
 /// </summary>
 public sealed class CaptureMonitorService : IDisposable
 {
@@ -59,25 +59,19 @@ public sealed class CaptureMonitorService : IDisposable
             {
                 var settings = _settings;
                 var interval = Math.Clamp(settings.OcrIntervalMs, 250, 5000);
+                var regions = settings.CaptureRegions?.Where(r => r.IsValid).ToList() ?? [];
 
-                if (settings.CombatTextRegion.IsValid)
+                foreach (var named in regions)
                 {
-                    using var bmp = _capture.Capture(settings.CombatTextRegion);
-                    if (bmp is not null)
-                    {
-                        var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
-                        CombatPreviewChanged?.Invoke(string.Join(Environment.NewLine, lines));
-                        _tracker.ProcessCombatLines(lines);
-                    }
-                }
+                    using var bmp = _capture.Capture(named.Region);
+                    if (bmp is null)
+                        continue;
 
-                if (settings.AbilitiesRegion.IsValid)
-                {
-                    using var bmp = _capture.Capture(settings.AbilitiesRegion);
-                    if (bmp is not null)
+                    var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
+                    _tracker.ProcessRegionLines(named.Id, lines);
+
+                    if (IsAbilitiesRegion(named))
                     {
-                        var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
-                        // Ability bar: each slot tends to be one OCR line with the spell name.
                         var cleaned = lines
                             .Select(CleanAbilityLine)
                             .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -86,11 +80,14 @@ public sealed class CaptureMonitorService : IDisposable
                         AbilitiesPreviewChanged?.Invoke(string.Join(Environment.NewLine, cleaned));
                         _tracker.SetLoadedAbilities(cleaned);
                     }
+                    else if (IsCombatPreviewRegion(named, settings))
+                    {
+                        CombatPreviewChanged?.Invoke(string.Join(Environment.NewLine, lines));
+                    }
                 }
 
-                var regionsOk = settings.CombatTextRegion.IsValid || settings.AbilitiesRegion.IsValid;
-                SetStatus(regionsOk
-                    ? $"Monitoring (every {interval} ms)"
+                SetStatus(regions.Count > 0
+                    ? $"Monitoring {regions.Count} region(s) (every {interval} ms)"
                     : "Set capture regions in Options");
 
                 await Task.Delay(interval, ct);
@@ -107,12 +104,24 @@ public sealed class CaptureMonitorService : IDisposable
         }
     }
 
+    private static bool IsAbilitiesRegion(NamedCaptureRegion named) =>
+        string.Equals(named.Name, "Abilities", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCombatPreviewRegion(NamedCaptureRegion named, AppSettings settings)
+    {
+        if (string.Equals(named.Name, "Combat Text", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Fallback preview: first non-Abilities region.
+        var first = settings.CaptureRegions
+            .FirstOrDefault(r => r.IsValid && !IsAbilitiesRegion(r));
+        return first is not null && string.Equals(first.Id, named.Id, StringComparison.Ordinal);
+    }
+
     private static string? CleanAbilityLine(string line)
     {
         var t = line.Trim();
-        // Drop solitary hotkey digits OCR sometimes picks up.
         if (t.Length <= 2 && t.All(char.IsDigit)) return null;
-        // Strip leading "1 " / "7 " style prefixes if present.
         if (t.Length > 2 && char.IsDigit(t[0]) && (t[1] == ' ' || t[1] == '.' || t[1] == ')'))
             t = t[2..].Trim();
         return t;
