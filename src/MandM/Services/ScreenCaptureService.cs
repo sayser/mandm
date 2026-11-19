@@ -7,21 +7,39 @@ namespace MandM.Services;
 
 public sealed class ScreenCaptureService
 {
-    public Bitmap? Capture(CaptureRegion region)
+    /// <summary>
+    /// Capture into an existing bitmap when size matches; otherwise allocate a new one.
+    /// Caller owns and must dispose the returned bitmap when replacing the buffer.
+    /// </summary>
+    public Bitmap? CaptureInto(CaptureRegion region, Bitmap? reuse)
     {
         if (!region.IsValid) return null;
 
-        var bmp = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppArgb);
+        Bitmap bmp;
+        if (reuse is not null
+            && reuse.Width == region.Width
+            && reuse.Height == region.Height
+            && reuse.PixelFormat == PixelFormat.Format32bppArgb)
+        {
+            bmp = reuse;
+        }
+        else
+        {
+            reuse?.Dispose();
+            bmp = new Bitmap(region.Width, region.Height, PixelFormat.Format32bppArgb);
+        }
+
         using var g = Graphics.FromImage(bmp);
         g.CopyFromScreen(region.X, region.Y, 0, 0, bmp.Size, CopyPixelOperation.SourceCopy);
         return bmp;
     }
 
+    public Bitmap? Capture(CaptureRegion region) => CaptureInto(region, null);
+
     /// <summary>
-    /// Fast content fingerprint for skip-OCR-when-unchanged.
-    /// Samples every Nth pixel so busy frames stay cheap.
+    /// Fast content fingerprint — samples every 8th pixel via unsafe pointer (no row buffer alloc).
     /// </summary>
-    public static ulong ComputeContentHash(Bitmap bitmap)
+    public static unsafe ulong ComputeContentHash(Bitmap bitmap)
     {
         var data = bitmap.LockBits(
             new Rectangle(0, 0, bitmap.Width, bitmap.Height),
@@ -29,27 +47,25 @@ public sealed class ScreenCaptureService
             PixelFormat.Format32bppArgb);
         try
         {
-            var stride = data.Stride;
-            var height = data.Height;
-            var width = data.Width;
-            // Sample ~every 8th pixel on each axis (~1/64 of pixels).
             const int stepX = 8;
             const int stepY = 8;
-            ulong hash = 14695981039346656037UL; // FNV-1a offset
-            var row = new byte[Math.Abs(stride)];
+            ulong hash = 14695981039346656037UL; // FNV-1a
+            var height = data.Height;
+            var width = data.Width;
+            var stride = data.Stride;
+            var scan0 = (byte*)data.Scan0;
 
             for (var y = 0; y < height; y += stepY)
             {
-                Marshal.Copy(data.Scan0 + y * stride, row, 0, row.Length);
+                var row = scan0 + y * stride;
                 for (var x = 0; x < width; x += stepX)
                 {
-                    var i = x * 4;
-                    if (i + 3 >= row.Length) break;
-                    hash ^= row[i];
+                    var p = row + x * 4;
+                    hash ^= p[0];
                     hash *= 1099511628211UL;
-                    hash ^= row[i + 1];
+                    hash ^= p[1];
                     hash *= 1099511628211UL;
-                    hash ^= row[i + 2];
+                    hash ^= p[2];
                     hash *= 1099511628211UL;
                 }
             }
@@ -59,6 +75,29 @@ public sealed class ScreenCaptureService
             hash ^= (uint)height;
             hash *= 1099511628211UL;
             return hash;
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
+    }
+
+    /// <summary>Copy BGRA pixels into a reused buffer (stride may include padding).</summary>
+    public static void CopyBgra(Bitmap bitmap, ref byte[]? buffer, out int width, out int height, out int stride)
+    {
+        width = bitmap.Width;
+        height = bitmap.Height;
+        var data = bitmap.LockBits(
+            new Rectangle(0, 0, width, height),
+            ImageLockMode.ReadOnly,
+            PixelFormat.Format32bppArgb);
+        try
+        {
+            stride = Math.Abs(data.Stride);
+            var needed = stride * height;
+            if (buffer is null || buffer.Length < needed)
+                buffer = new byte[needed];
+            Marshal.Copy(data.Scan0, buffer, 0, needed);
         }
         finally
         {
