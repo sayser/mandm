@@ -10,7 +10,9 @@ public sealed class BuffTrackerService : IDisposable
     private readonly AlarmService _alarms;
     private readonly DispatcherTimer _tick;
     private readonly object _gate = new();
-    private readonly HashSet<string> _recentLines = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Normalized OCR lines from the previous poll — used to detect newly appeared lines.</summary>
+    private HashSet<string> _previousLineKeys = new(StringComparer.OrdinalIgnoreCase);
+    private string _previousBlob = string.Empty;
     private AppSettings _settings;
 
     public ObservableCollection<ActiveBuff> ActiveBuffs { get; } = [];
@@ -26,43 +28,81 @@ public sealed class BuffTrackerService : IDisposable
         _tick.Start();
     }
 
-    public void UpdateSettings(AppSettings settings) => _settings = settings;
+    public void UpdateSettings(AppSettings settings)
+    {
+        _settings = settings;
+        // Buff list / land text may have changed — re-scan the next OCR frame as all-new
+        // so a line still on screen (e.g. "You go berserk.") can land a newly added buff.
+        lock (_gate)
+        {
+            _previousLineKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _previousBlob = string.Empty;
+        }
+    }
 
     public void ProcessCombatLines(IEnumerable<string> lines)
     {
-        foreach (var raw in lines)
-        {
-            var line = raw.Trim();
-            if (string.IsNullOrWhiteSpace(line)) continue;
+        var entries = lines
+            .Select(raw => (raw ?? string.Empty).Trim())
+            .Where(raw => raw.Length > 0)
+            .Select(raw => (Raw: raw, Key: TextMatch.Normalize(raw)))
+            .Where(t => t.Key.Length > 0)
+            .GroupBy(t => t.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
 
-            // Deduplicate identical OCR lines briefly so we don't re-land every poll.
-            var key = TextMatch.Normalize(line);
-            lock (_gate)
-            {
-                if (!_recentLines.Add(key))
-                    continue;
-            }
+        var currentKeys = entries.Select(e => e.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var blob = string.Join("\n", entries.Select(e => e.Raw));
 
-            foreach (var def in _settings.Buffs.Where(b => b.Enabled))
-            {
-                if (!string.IsNullOrWhiteSpace(def.FadeText) && TextMatch.ContainsLoose(line, def.FadeText))
-                {
-                    ClearBuff(def.Id);
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(def.LandText) && TextMatch.ContainsLoose(line, def.LandText))
-                {
-                    LandBuff(def);
-                }
-            }
-        }
-
-        // Cap recent-line memory
+        HashSet<string> previousKeys;
+        string previousBlob;
         lock (_gate)
         {
-            if (_recentLines.Count > 200)
-                _recentLines.Clear();
+            previousKeys = _previousLineKeys;
+            previousBlob = _previousBlob;
+            _previousLineKeys = currentKeys;
+            _previousBlob = blob;
+        }
+
+        var newEntries = entries.Where(e => !previousKeys.Contains(e.Key)).ToList();
+
+        foreach (var (raw, _) in newEntries)
+            ApplyLine(raw);
+
+        // Land phrases split across OCR lines ("You go" + "berserk") or only visible as a group:
+        // fire when the joined frame newly contains the land/fade text.
+        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
+        {
+            if (!string.IsNullOrWhiteSpace(def.FadeText) &&
+                TextMatch.ContainsLoose(blob, def.FadeText) &&
+                !TextMatch.ContainsLoose(previousBlob, def.FadeText))
+            {
+                ClearBuff(def.Id);
+            }
+
+            if (!string.IsNullOrWhiteSpace(def.LandText) &&
+                TextMatch.ContainsLoose(blob, def.LandText) &&
+                !TextMatch.ContainsLoose(previousBlob, def.LandText))
+            {
+                // Avoid double-land if a new single line already matched this buff above.
+                if (!newEntries.Any(e => TextMatch.ContainsLoose(e.Raw, def.LandText)))
+                    LandBuff(def);
+            }
+        }
+    }
+
+    private void ApplyLine(string line)
+    {
+        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
+        {
+            if (!string.IsNullOrWhiteSpace(def.FadeText) && TextMatch.ContainsLoose(line, def.FadeText))
+            {
+                ClearBuff(def.Id);
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(def.LandText) && TextMatch.ContainsLoose(line, def.LandText))
+                LandBuff(def);
         }
     }
 
@@ -100,7 +140,7 @@ public sealed class BuffTrackerService : IDisposable
             {
                 Definition = def,
                 LandedAtUtc = DateTime.UtcNow,
-                Remaining = TimeSpan.FromSeconds(def.DurationSeconds)
+                Remaining = TimeSpan.FromSeconds(Math.Max(1, def.DurationSeconds))
             });
             Changed?.Invoke();
         }
@@ -133,7 +173,6 @@ public sealed class BuffTrackerService : IDisposable
     private void Tick()
     {
         var now = DateTime.UtcNow;
-        ActiveBuff expired = null!;
         foreach (var buff in ActiveBuffs.ToList())
         {
             var elapsed = now - buff.LandedAtUtc;
@@ -141,10 +180,7 @@ public sealed class BuffTrackerService : IDisposable
             buff.Remaining = remaining;
 
             if (remaining <= TimeSpan.Zero)
-            {
-                expired = buff;
                 continue;
-            }
 
             if (!buff.Warned && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
             {
@@ -153,15 +189,11 @@ public sealed class BuffTrackerService : IDisposable
             }
         }
 
-        if (expired is not null)
-        {
-            ActiveBuffs.Remove(expired);
-            Changed?.Invoke();
-        }
-
-        // Remove any others that expired this tick
-        foreach (var buff in ActiveBuffs.Where(b => b.Remaining <= TimeSpan.Zero).ToList())
+        var expired = ActiveBuffs.Where(b => b.Remaining <= TimeSpan.Zero).ToList();
+        if (expired.Count == 0) return;
+        foreach (var buff in expired)
             ActiveBuffs.Remove(buff);
+        Changed?.Invoke();
     }
 
     public void Dispose() => _tick.Stop();
