@@ -72,19 +72,34 @@ public sealed class AlarmService
         });
     }
 
-    public void PreviewVoice(string? sampleText = null)
+    /// <summary>
+    /// Speak a sample using <paramref name="overrideSettings"/> (UI draft) when provided.
+    /// Does not change the permanently saved alarm voice settings.
+    /// </summary>
+    public void PreviewVoice(VoiceSettings? overrideSettings = null, string? sampleText = null)
     {
-        SpeechPlayback.Settings = _voice.Clone();
-        if (!string.IsNullOrWhiteSpace(sampleText))
-        {
-            PlayAlert(AlertMode.Voice, "Exclamation", sampleText, sampleText);
-            return;
-        }
-
+        var snap = (overrideSettings ?? _voice).Clone();
+        var volume = Math.Clamp(snap.VolumePercent <= 0 ? 100 : snap.VolumePercent, 0, 100);
         _ = Task.Run(() =>
         {
-            if (!SpeechPlayback.Preview())
-                PlaySoundCore("Exclamation");
+            var previous = SpeechPlayback.Settings;
+            try
+            {
+                SpeechPlayback.Settings = snap;
+                if (!string.IsNullOrWhiteSpace(sampleText))
+                {
+                    if (!SpeechPlayback.Speak(sampleText.Trim(), volume))
+                        PlaySoundCore("Exclamation");
+                    return;
+                }
+
+                if (!SpeechPlayback.Preview())
+                    PlaySoundCore("Exclamation");
+            }
+            finally
+            {
+                SpeechPlayback.Settings = previous;
+            }
         });
     }
 

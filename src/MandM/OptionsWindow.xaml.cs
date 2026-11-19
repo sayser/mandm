@@ -293,10 +293,8 @@ public partial class OptionsWindow : Window
             return;
         }
 
-        var previous = App.State.Alarms.CurrentVoiceSettings;
-        App.State.Alarms.UpdateVoiceSettings(ReadVoiceSettings());
-        App.State.Alarms.PreviewVoice();
-        App.State.Alarms.UpdateVoiceSettings(previous);
+        // Use the dropdown draft immediately — do not require Save first.
+        App.State.Alarms.PreviewVoice(ReadVoiceSettings());
     }
 
     private VoiceSettings ReadVoiceSettings()
