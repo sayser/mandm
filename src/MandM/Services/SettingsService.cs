@@ -41,6 +41,7 @@ public sealed class SettingsService
                 return AppSettings.CreateDefault();
 
             settings.Buffs ??= [];
+            settings.UserTimers ??= [];
             settings.AbilitiesRegion ??= new CaptureRegion();
             settings.CombatTextRegion ??= new CaptureRegion();
             settings.MouseHighlight ??= new MouseHighlightSettings();

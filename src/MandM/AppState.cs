@@ -12,12 +12,14 @@ public sealed class AppState : IDisposable
 
     public AppSettings Settings { get; private set; }
     public BuffTrackerService Tracker { get; }
+    public UserTimerService UserTimers { get; }
     public CaptureMonitorService Monitor { get; }
 
     public AppState()
     {
         Settings = SettingsService.Load();
         Tracker = new BuffTrackerService(Settings, Alarms);
+        UserTimers = new UserTimerService(Settings);
         Monitor = new CaptureMonitorService(Settings, Ocr, Tracker);
     }
 
@@ -25,6 +27,7 @@ public sealed class AppState : IDisposable
     {
         SettingsService.Save(Settings);
         Tracker.UpdateSettings(Settings);
+        UserTimers.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);
     }
 
@@ -32,6 +35,7 @@ public sealed class AppState : IDisposable
     {
         Settings = SettingsService.Load();
         Tracker.UpdateSettings(Settings);
+        UserTimers.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);
     }
 
@@ -39,5 +43,6 @@ public sealed class AppState : IDisposable
     {
         Monitor.Dispose();
         Tracker.Dispose();
+        UserTimers.Dispose();
     }
 }

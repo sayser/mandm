@@ -1,0 +1,79 @@
+<Window x:Class="MandM.TimerOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="MandM Timer Overlay"
+        Width="360" Height="260" MinWidth="180" MinHeight="56"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="CanResizeWithGrip"
+        LocationChanged="Overlay_BoundsChanged"
+        SizeChanged="Overlay_BoundsChanged">
+  <Border Background="#C8081A28" BorderBrush="#56839C" BorderThickness="1" CornerRadius="14" Padding="8,6">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+
+      <Grid Margin="0,0,0,6" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="⏱" FontSize="16" Foreground="#2FD8C7" Margin="2,0,8,0"/>
+          <TextBlock Text="USER TIMERS" FontWeight="Bold" Foreground="#E8F5FC"/>
+        </StackPanel>
+        <Button Content="×" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="26" Height="26" Padding="0" FontSize="13"
+                Background="#78091F31" BorderBrush="#4F7891"
+                ToolTip="Close timer overlay" Click="Close_Click"/>
+      </Grid>
+
+      <Grid Grid.Row="1">
+        <ListBox Name="ListTimers" Background="Transparent" BorderThickness="0"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,4,0">
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+              <Setter Property="Padding" Value="0"/>
+              <Setter Property="Margin" Value="0,0,0,6"/>
+              <Setter Property="Focusable" Value="False"/>
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="ListBoxItem">
+                    <ContentPresenter/>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListBox.ItemContainerStyle>
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border BorderThickness="1" CornerRadius="8" Background="#66102838"
+                      BorderBrush="#AA2FD8C7" Padding="10,8" MinHeight="44">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                               Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding StatusDisplay}" FontSize="10" Foreground="#7899AD" Margin="0,2,0,0"/>
+                  </StackPanel>
+                  <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
+                             FontWeight="Bold" FontSize="20" Margin="8,0,0,0"
+                             Foreground="#2FD8C7" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock Name="TxtEmpty" Text="No user timers yet."
+                   Foreground="#7899AD" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   FontSize="11" IsHitTestVisible="False"/>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

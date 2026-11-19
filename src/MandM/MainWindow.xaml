@@ -111,6 +111,9 @@
               <RadioButton Name="TabBuffs" Content="BUFFS" Tag="◈" GroupName="PrimaryModule"
                            Style="{StaticResource PrimaryModuleNavButton}" IsChecked="True"
                            Checked="ModuleTab_Checked"/>
+              <RadioButton Name="TabTimers" Content="TIMER" Tag="⏱" GroupName="PrimaryModule"
+                           Style="{StaticResource PrimaryModuleNavButton}" MinWidth="110"
+                           Checked="ModuleTab_Checked"/>
               <RadioButton Name="TabDamage" Content="DAMAGE TRACKER" Tag="⚔" GroupName="PrimaryModule"
                            Style="{StaticResource PrimaryModuleNavButton}" MinWidth="160"
                            Checked="ModuleTab_Checked"/>
@@ -374,6 +377,93 @@
             </DockPanel>
           </Border>
         </DockPanel>
+        </Grid>
+
+        <!-- TIMER — named user countdowns + dedicated overlay -->
+        <Grid Name="PanelTimers" Visibility="Collapsed">
+          <Border Style="{StaticResource GlassCard}" Padding="16,12">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+
+              <DockPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="⏱" FontSize="20" Foreground="#2FD8C7" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                  <StackPanel>
+                    <TextBlock Text="USER TIMERS" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                    <TextBlock Text="Named countdowns with start / stop / reset — separate overlay from buffs"
+                               Foreground="#66879D" FontSize="10"/>
+                  </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Button Name="BtnTimerOverlay" Style="{StaticResource HeaderActionButton}"
+                          Content="Overlay: Off" Click="TimerOverlay_Click" Margin="0,0,8,0"/>
+                  <Button Style="{StaticResource PanelActionButton}" Tag="＋" Content="Add Timer" Click="AddTimer_Click"/>
+                  <Button Style="{StaticResource PanelActionButton}" Tag="✎" Content="Edit" Click="EditTimer_Click"/>
+                  <Button Style="{StaticResource PanelActionButton}" Tag="🗑" Content="Delete" Click="DeleteTimer_Click"/>
+                </StackPanel>
+              </DockPanel>
+
+              <ListBox Grid.Row="2" Name="ListTimers" BorderBrush="#56839C" Background="#61071F31"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                  <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Template">
+                      <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                          <Border x:Name="Row" Background="#360B2638" BorderBrush="#2C4D62"
+                                  BorderThickness="0,0,0,1" Padding="12,10">
+                            <ContentPresenter/>
+                          </Border>
+                          <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                              <Setter TargetName="Row" Property="Background" Value="#8A17354D"/>
+                              <Setter TargetName="Row" Property="BorderBrush" Value="#2FD8C7"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                              <Setter TargetName="Row" Property="Background" Value="#6916384D"/>
+                            </Trigger>
+                          </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                      </Setter.Value>
+                    </Setter>
+                  </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="Auto"/>
+                      </Grid.ColumnDefinitions>
+                      <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding StatusDisplay}" FontSize="11" Foreground="#7899AD" Margin="0,2,0,0"/>
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}" FontSize="20" FontWeight="Bold"
+                                 Foreground="#2FD8C7" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                 Margin="0,0,14,0"/>
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Start" Padding="10,6" Margin="0,0,6,0" MinWidth="64"
+                                Click="TimerStart_Click" Tag="{Binding}"/>
+                        <Button Content="Stop" Padding="10,6" Margin="0,0,6,0" MinWidth="64"
+                                Click="TimerStop_Click" Tag="{Binding}"/>
+                        <Button Content="Reset" Padding="10,6" MinWidth="64"
+                                Click="TimerReset_Click" Tag="{Binding}"/>
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Border>
         </Grid>
 
         <!-- DAMAGE TRACKER — styled shell (no live DPS yet) -->

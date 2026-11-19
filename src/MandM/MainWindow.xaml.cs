@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using MandM.Models;
 using MandM.Services;
@@ -12,6 +13,7 @@ public partial class MainWindow : Window
     private static readonly Brush MutedPillBrush = Freeze(Color.FromRgb(0x89, 0xA9, 0xC1));
 
     private OverlayWindow? _overlay;
+    private TimerOverlayWindow? _timerOverlay;
     private MouseHighlightOverlayWindow? _mouseHighlight;
     private bool _mouseHighlightSuspended;
 
@@ -21,8 +23,10 @@ public partial class MainWindow : Window
         TxtVersion.Text = $"v{UpdateCheckService.GetLocalVersion()}";
         ListActive.ItemsSource = App.State.Tracker.ActiveBuffs;
         ListAbilities.ItemsSource = App.State.Tracker.LoadedAbilities;
+        ListTimers.ItemsSource = App.State.UserTimers.Timers;
         RefreshBuffList();
         UpdateOverlayButton();
+        UpdateTimerOverlayButton();
         UpdateActiveEmptyState();
         ApplyMouseHighlight();
         RefreshStatusPills();
@@ -52,15 +56,24 @@ public partial class MainWindow : Window
         RefreshStatusPills();
 
         if (App.State.Settings.OverlayEnabled)
-            ShowOverlay(true);
+            ShowBuffOverlay(true);
+        if (App.State.Settings.TimerOverlayEnabled)
+            ShowTimerOverlay(true);
 
         Closing += (_, _) =>
         {
             if (_overlay is not null)
             {
-                PersistOverlayBounds();
+                PersistBuffOverlayBounds();
                 _overlay.Close();
                 _overlay = null;
+            }
+
+            if (_timerOverlay is not null)
+            {
+                PersistTimerOverlayBounds();
+                _timerOverlay.Close();
+                _timerOverlay = null;
             }
 
             _mouseHighlight?.Close();
@@ -76,16 +89,19 @@ public partial class MainWindow : Window
         ListBuffs.ItemsSource = null;
         ListBuffs.ItemsSource = App.State.Settings.Buffs.ToList();
         if (selectedId is not null)
-        {
             ListBuffs.SelectedItem = App.State.Settings.Buffs.FirstOrDefault(b => b.Id == selectedId);
-        }
     }
 
     private void UpdateOverlayButton()
     {
-        var on = App.State.Settings.OverlayEnabled;
-        BtnOverlay.Content = on ? "Overlay: On" : "Overlay: Off";
+        BtnOverlay.Content = App.State.Settings.OverlayEnabled ? "Overlay: On" : "Overlay: Off";
         RefreshStatusPills();
+    }
+
+    private void UpdateTimerOverlayButton()
+    {
+        if (BtnTimerOverlay is null) return;
+        BtnTimerOverlay.Content = App.State.Settings.TimerOverlayEnabled ? "Overlay: On" : "Overlay: Off";
     }
 
     private void UpdateActiveEmptyState() =>
@@ -117,7 +133,6 @@ public partial class MainWindow : Window
             var settings = App.State.Settings.MouseHighlight ?? new MouseHighlightSettings();
             if (_mouseHighlightSuspended)
             {
-                // Keep overlay hidden while region picker needs real mouse input.
                 settings = settings.Clone();
                 settings.Enabled = false;
             }
@@ -140,10 +155,6 @@ public partial class MainWindow : Window
         RefreshStatusPills();
     }
 
-    /// <summary>
-    /// Region picker must own the cursor: the always-on highlight is Topmost + click-through
-    /// and blocks drag if left up during Set….
-    /// </summary>
     public void SuspendMouseHighlight(bool suspend)
     {
         _mouseHighlightSuspended = suspend;
@@ -152,10 +163,10 @@ public partial class MainWindow : Window
 
     private void ModuleTab_Checked(object sender, RoutedEventArgs e)
     {
-        if (PanelBuffs is null || PanelDamage is null) return;
-        var showBuffs = TabBuffs.IsChecked == true;
-        PanelBuffs.Visibility = showBuffs ? Visibility.Visible : Visibility.Collapsed;
-        PanelDamage.Visibility = showBuffs ? Visibility.Collapsed : Visibility.Visible;
+        if (PanelBuffs is null || PanelDamage is null || PanelTimers is null) return;
+        PanelBuffs.Visibility = TabBuffs.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PanelTimers.Visibility = TabTimers.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PanelDamage.Visibility = TabDamage.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static string Truncate(string value, int max) =>
@@ -171,22 +182,27 @@ public partial class MainWindow : Window
     private void Overlay_Click(object sender, RoutedEventArgs e)
     {
         var enable = !App.State.Settings.OverlayEnabled;
-        ShowOverlay(enable);
+        ShowBuffOverlay(enable);
         App.State.Settings.OverlayEnabled = enable;
         App.State.SaveSettings();
         UpdateOverlayButton();
     }
 
-    private void ShowOverlay(bool show)
+    private void ShowBuffOverlay(bool show)
     {
         if (show)
         {
             if (_overlay is null)
             {
                 _overlay = new OverlayWindow(App.State.Tracker);
+                _overlay.BoundsChanged += () =>
+                {
+                    PersistBuffOverlayBounds();
+                    App.State.SaveSettings();
+                };
                 _overlay.Closed += (_, _) =>
                 {
-                    PersistOverlayBounds();
+                    PersistBuffOverlayBounds();
                     _overlay = null;
                     App.State.Settings.OverlayEnabled = false;
                     App.State.SaveSettings();
@@ -195,27 +211,76 @@ public partial class MainWindow : Window
             }
 
             var s = App.State.Settings;
-            _overlay.Left = s.OverlayLeft;
-            _overlay.Top = s.OverlayTop;
-            _overlay.Width = s.OverlayWidth;
-            _overlay.Height = s.OverlayHeight;
+            _overlay.ApplyBounds(s.OverlayLeft, s.OverlayTop, s.OverlayWidth, s.OverlayHeight);
             _overlay.Show();
         }
         else if (_overlay is not null)
         {
-            PersistOverlayBounds();
+            PersistBuffOverlayBounds();
             _overlay.Close();
             _overlay = null;
         }
     }
 
-    private void PersistOverlayBounds()
+    private void PersistBuffOverlayBounds()
     {
         if (_overlay is null) return;
         App.State.Settings.OverlayLeft = _overlay.Left;
         App.State.Settings.OverlayTop = _overlay.Top;
         App.State.Settings.OverlayWidth = _overlay.Width;
         App.State.Settings.OverlayHeight = _overlay.Height;
+    }
+
+    private void TimerOverlay_Click(object sender, RoutedEventArgs e)
+    {
+        var enable = !App.State.Settings.TimerOverlayEnabled;
+        ShowTimerOverlay(enable);
+        App.State.Settings.TimerOverlayEnabled = enable;
+        App.State.SaveSettings();
+        UpdateTimerOverlayButton();
+    }
+
+    private void ShowTimerOverlay(bool show)
+    {
+        if (show)
+        {
+            if (_timerOverlay is null)
+            {
+                _timerOverlay = new TimerOverlayWindow(App.State.UserTimers);
+                _timerOverlay.BoundsChanged += () =>
+                {
+                    PersistTimerOverlayBounds();
+                    App.State.SaveSettings();
+                };
+                _timerOverlay.Closed += (_, _) =>
+                {
+                    PersistTimerOverlayBounds();
+                    _timerOverlay = null;
+                    App.State.Settings.TimerOverlayEnabled = false;
+                    App.State.SaveSettings();
+                    UpdateTimerOverlayButton();
+                };
+            }
+
+            var s = App.State.Settings;
+            _timerOverlay.ApplyBounds(s.TimerOverlayLeft, s.TimerOverlayTop, s.TimerOverlayWidth, s.TimerOverlayHeight);
+            _timerOverlay.Show();
+        }
+        else if (_timerOverlay is not null)
+        {
+            PersistTimerOverlayBounds();
+            _timerOverlay.Close();
+            _timerOverlay = null;
+        }
+    }
+
+    private void PersistTimerOverlayBounds()
+    {
+        if (_timerOverlay is null) return;
+        App.State.Settings.TimerOverlayLeft = _timerOverlay.Left;
+        App.State.Settings.TimerOverlayTop = _timerOverlay.Top;
+        App.State.Settings.TimerOverlayWidth = _timerOverlay.Width;
+        App.State.Settings.TimerOverlayHeight = _timerOverlay.Height;
     }
 
     private void Options_Click(object sender, RoutedEventArgs e)
@@ -276,9 +341,65 @@ public partial class MainWindow : Window
         RefreshBuffList();
     }
 
+    private void AddTimer_Click(object sender, RoutedEventArgs e)
+    {
+        var def = new UserTimerDefinition { Name = "New Timer", DurationSeconds = 5 * 60 };
+        var dlg = new TimerEditWindow(def) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        App.State.UserTimers.AddTimer(dlg.Result);
+        App.State.SaveSettings();
+    }
+
+    private void EditTimer_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListTimers.SelectedItem is not ActiveUserTimer selected) return;
+        var dlg = new TimerEditWindow(selected.Definition.Clone()) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        dlg.Result.Id = selected.Definition.Id;
+        var list = App.State.Settings.UserTimers;
+        var idx = list.FindIndex(t => t.Id == selected.Definition.Id);
+        if (idx >= 0)
+            list[idx] = dlg.Result;
+        App.State.UserTimers.UpdateSettings(App.State.Settings);
+        selected.Reset();
+        App.State.SaveSettings();
+    }
+
+    private void DeleteTimer_Click(object sender, RoutedEventArgs e)
+    {
+        if (ListTimers.SelectedItem is not ActiveUserTimer selected) return;
+        if (MessageBox.Show(this, $"Delete timer \"{selected.Name}\"?", "MandM",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            return;
+        App.State.UserTimers.RemoveTimer(selected.Definition.Id);
+        App.State.SaveSettings();
+    }
+
+    private static ActiveUserTimer? TimerFromSender(object sender) =>
+        (sender as FrameworkElement)?.Tag as ActiveUserTimer
+        ?? ((sender as FrameworkElement)?.DataContext as ActiveUserTimer);
+
+    private void TimerStart_Click(object sender, RoutedEventArgs e)
+    {
+        TimerFromSender(sender)?.Start();
+        // Force list refresh of bound status
+        ListTimers.Items.Refresh();
+    }
+
+    private void TimerStop_Click(object sender, RoutedEventArgs e)
+    {
+        TimerFromSender(sender)?.Stop();
+        ListTimers.Items.Refresh();
+    }
+
+    private void TimerReset_Click(object sender, RoutedEventArgs e)
+    {
+        TimerFromSender(sender)?.Reset();
+        ListTimers.Items.Refresh();
+    }
+
     private async void Updates_Click(object sender, RoutedEventArgs e)
     {
-        BtnOverlay.IsEnabled = true;
         TxtStatus.Text = "Checking for updates…";
         var result = await App.State.Updates.CheckAsync(App.State.Settings.UpdateRepo);
         TxtStatus.Text = result.Message;

@@ -9,6 +9,8 @@
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="CanResizeWithGrip"
+        LocationChanged="Overlay_BoundsChanged"
+        SizeChanged="Overlay_BoundsChanged"
         PreviewMouseLeftButtonDown="Overlay_PreviewMouseLeftButtonDown">
   <!-- Near-invisible hit target like EQDM buff overlay -->
   <Border Background="#C8081A28" BorderBrush="#56839C" BorderThickness="1" CornerRadius="14" Padding="8,6">

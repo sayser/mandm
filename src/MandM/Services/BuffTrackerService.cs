@@ -10,9 +10,12 @@ public sealed class BuffTrackerService : IDisposable
     private readonly AlarmService _alarms;
     private readonly DispatcherTimer _tick;
     private readonly object _gate = new();
-    /// <summary>Normalized OCR lines from the previous poll — used to detect newly appeared lines.</summary>
-    private HashSet<string> _previousLineKeys = new(StringComparer.OrdinalIgnoreCase);
-    private string _previousBlob = string.Empty;
+    /// <summary>OCR line match counts from the previous poll (per buff id).</summary>
+    private Dictionary<string, int> _previousLandCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
+    /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
+    private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
 
     public ObservableCollection<ActiveBuff> ActiveBuffs { get; } = [];
@@ -31,79 +34,89 @@ public sealed class BuffTrackerService : IDisposable
     public void UpdateSettings(AppSettings settings)
     {
         _settings = settings;
-        // Buff list / land text may have changed — re-scan the next OCR frame as all-new
-        // so a line still on screen (e.g. "You go berserk.") can land a newly added buff.
         lock (_gate)
         {
-            _previousLineKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            _previousBlob = string.Empty;
+            _previousLandCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _armedFromCast.Clear();
         }
     }
 
     public void ProcessCombatLines(IEnumerable<string> lines)
     {
+        // Preserve duplicate rows — a recast often OCR's the same land string again.
         var entries = lines
             .Select(raw => (raw ?? string.Empty).Trim())
             .Where(raw => raw.Length > 0)
-            .Select(raw => (Raw: raw, Key: TextMatch.Normalize(raw)))
-            .Where(t => t.Key.Length > 0)
-            .GroupBy(t => t.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
             .ToList();
 
-        var currentKeys = entries.Select(e => e.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var blob = string.Join("\n", entries.Select(e => e.Raw));
+        var blob = string.Join("\n", entries);
+        var landCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var fadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var castCounts = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        HashSet<string> previousKeys;
-        string previousBlob;
-        lock (_gate)
-        {
-            previousKeys = _previousLineKeys;
-            previousBlob = _previousBlob;
-            _previousLineKeys = currentKeys;
-            _previousBlob = blob;
-        }
-
-        var newEntries = entries.Where(e => !previousKeys.Contains(e.Key)).ToList();
-
-        foreach (var (raw, _) in newEntries)
-            ApplyLine(raw);
-
-        // Land phrases split across OCR lines ("You go" + "berserk") or only visible as a group:
-        // fire when the joined frame newly contains the land/fade text.
         foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
         {
-            if (!string.IsNullOrWhiteSpace(def.FadeText) &&
-                TextMatch.ContainsLoose(blob, def.FadeText) &&
-                !TextMatch.ContainsLoose(previousBlob, def.FadeText))
-            {
+            landCounts[def.Id] = CountMatches(entries, blob, def.LandText);
+            fadeCounts[def.Id] = CountMatches(entries, blob, def.FadeText);
+            castCounts[def.Id] = CountMatches(entries, blob, def.CastText);
+        }
+
+        Dictionary<string, int> prevLand;
+        Dictionary<string, int> prevFade;
+        Dictionary<string, int> prevCast;
+        lock (_gate)
+        {
+            prevLand = _previousLandCounts;
+            prevFade = _previousFadeCounts;
+            prevCast = _previousCastCounts;
+            _previousLandCounts = landCounts;
+            _previousFadeCounts = fadeCounts;
+            _previousCastCounts = castCounts;
+        }
+
+        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
+        {
+            var fadeNow = fadeCounts.GetValueOrDefault(def.Id);
+            var fadeWas = prevFade.GetValueOrDefault(def.Id);
+            if (fadeNow > fadeWas)
                 ClearBuff(def.Id);
+
+            var castNow = castCounts.GetValueOrDefault(def.Id);
+            var castWas = prevCast.GetValueOrDefault(def.Id);
+            if (castNow > castWas)
+            {
+                lock (_gate)
+                    _armedFromCast.Add(def.Id);
             }
 
-            if (!string.IsNullOrWhiteSpace(def.LandText) &&
-                TextMatch.ContainsLoose(blob, def.LandText) &&
-                !TextMatch.ContainsLoose(previousBlob, def.LandText))
-            {
-                // Avoid double-land if a new single line already matched this buff above.
-                if (!newEntries.Any(e => TextMatch.ContainsLoose(e.Raw, def.LandText)))
-                    LandBuff(def);
-            }
+            var landNow = landCounts.GetValueOrDefault(def.Id);
+            var landWas = prevLand.GetValueOrDefault(def.Id);
+
+            // 1) New land line appearance (count went up) — including recast while active.
+            var newLandOccurrence = landNow > landWas;
+            // 2) Cast was seen, then land is visible (handles sticky identical land OCR that
+            //    never increases count when the old land line is still on screen).
+            bool castArmedLand;
+            lock (_gate)
+                castArmedLand = landNow > 0 && _armedFromCast.Remove(def.Id);
+
+            if (newLandOccurrence || castArmedLand)
+                LandBuff(def);
         }
     }
 
-    private void ApplyLine(string line)
+    private static int CountMatches(List<string> entries, string blob, string? needle)
     {
-        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
-        {
-            if (!string.IsNullOrWhiteSpace(def.FadeText) && TextMatch.ContainsLoose(line, def.FadeText))
-            {
-                ClearBuff(def.Id);
-                continue;
-            }
+        if (string.IsNullOrWhiteSpace(needle))
+            return 0;
 
-            if (!string.IsNullOrWhiteSpace(def.LandText) && TextMatch.ContainsLoose(line, def.LandText))
-                LandBuff(def);
-        }
+        var count = entries.Count(line => TextMatch.ContainsLoose(line, needle));
+        // Phrase split across OCR lines: one presence if the joined frame matches.
+        if (count == 0 && TextMatch.ContainsLoose(blob, needle))
+            return 1;
+        return count;
     }
 
     public void SetLoadedAbilities(IEnumerable<string> names)
@@ -136,11 +149,13 @@ public sealed class BuffTrackerService : IDisposable
             if (existing is not null)
                 ActiveBuffs.Remove(existing);
 
+            // Always restart from full duration — even when already active.
             ActiveBuffs.Add(new ActiveBuff
             {
                 Definition = def,
                 LandedAtUtc = DateTime.UtcNow,
-                Remaining = TimeSpan.FromSeconds(Math.Max(1, def.DurationSeconds))
+                Remaining = TimeSpan.FromSeconds(Math.Max(1, def.DurationSeconds)),
+                Warned = false
             });
             Changed?.Invoke();
         }
