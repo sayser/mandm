@@ -144,13 +144,15 @@ public sealed class DamageTrackerService
     {
         Abilities.Clear();
         var dealt = _fight.DamageDealt;
+        var index = 0;
         foreach (var (name, damage) in _fight.Abilities)
         {
             Abilities.Add(new AbilityDamageRow
             {
                 Name = name,
                 Damage = damage,
-                Share = dealt <= 0 ? 0 : damage * 100.0 / dealt
+                Share = dealt <= 0 ? 0 : damage * 100.0 / dealt,
+                Color = AbilityDamageRow.ColorAt(index++)
             });
         }
     }

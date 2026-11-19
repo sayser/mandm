@@ -26,6 +26,7 @@ public partial class MainWindow : Window
         ListTimers.ItemsSource = App.State.UserTimers.Timers;
         ListRegionOcr.ItemsSource = App.State.Monitor.RegionSnapshots;
         ListAbilities.ItemsSource = App.State.Damage.Abilities;
+        AbilityDonut.ItemsSource = App.State.Damage.Abilities;
         RefreshBuffList();
         RefreshDamageRegionList();
         RefreshDamageTotals();

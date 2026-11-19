@@ -67,7 +67,8 @@ public partial class App : Application
         DoEvents();
         SaveWindowPng(main, Path.Combine(outDir, "main-buff-tracker.png"));
 
-        // Damage Tracker tab shell
+        // Damage Tracker tab with a closed fight so the ability doughnut has slices.
+        SeedDamageChart();
         main.TabDamage.IsChecked = true;
         DoEvents();
         SaveWindowPng(main, Path.Combine(outDir, "main-damage-tracker.png"));
@@ -125,6 +126,29 @@ public partial class App : Application
         options.Close();
         overlay.Close();
         main.Close();
+    }
+
+    private static void SeedDamageChart()
+    {
+        var region = State.Settings.CaptureRegions.FirstOrDefault();
+        if (region is null || string.IsNullOrWhiteSpace(region.Id))
+            return;
+
+        var previous = State.Settings.DamageRegionId;
+        State.Settings.DamageRegionId = region.Id;
+        State.Damage.UpdateSettings(State.Settings);
+        State.Damage.MarkBaselineReady();
+        string[] lines =
+        [
+            "You slash a crystal dervish for 120 points of damage.",
+            "Your Arcane Spear II hits a crystal dervish for 80 points of Magic Damage",
+            "a crystal dervish has taken 45 damage from your Denon's Disruptive Discord.",
+            "You crush a crystal dervish for 30 points of damage.",
+            "Your frost strike hits a crystal dervish for 18 points of damage."
+        ];
+        State.Damage.ProcessRegionLines(region.Id, lines);
+        State.Damage.ProcessRegionLines(region.Id, lines.Append("You have slain a crystal dervish!"));
+        State.Settings.DamageRegionId = previous;
     }
 
     private static string ResolveScreenshotDir()
