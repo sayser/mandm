@@ -27,8 +27,9 @@ public sealed class DamageFight
             .ToList();
 
     /// <summary>
-    /// Apply one OCR frame. A slain line closes the fight and seals the text still on screen,
-    /// so that line and leftover reads of it cannot open another fight.
+    /// Apply one OCR frame. A slain line closes the fight. Leftover OCR of that slain
+    /// line cannot open another fight. A later outgoing or incoming hit can, even when
+    /// the wording matches a line that was on the kill screen.
     /// </summary>
     public bool ApplyFrame(IReadOnlyList<string> fresh, IReadOnlyList<string> visible, DateTime when)
     {
@@ -149,11 +150,13 @@ public sealed class DamageFight
         _holding = true;
     }
 
-    private bool IsBlocked(string line) =>
-        DamageLineParser.IsSlainLine(line) || LooksLikeSlainLeftover(line) || IsSealed(line);
-
-    private bool IsSealed(string line)
+    private bool IsBlocked(string line)
     {
+        if (DamageLineParser.IsSlainLine(line) || LooksLikeSlainLeftover(line))
+            return true;
+        // A real hit is never discarded because its text was on the kill screen.
+        if (DamageLineParser.TryParse(line, out _))
+            return false;
         var canonical = DamageLineParser.Canonical(line);
         return canonical.Length > 0 && _sealed.Contains(canonical);
     }

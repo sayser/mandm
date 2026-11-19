@@ -100,6 +100,50 @@ reshuffle.Prime(["alpha hits YOU for 1 points of damage.", "beta line"]);
 var reorder = reshuffle.Observe(["beta line", "alpha hits YOU for 1 points of damage."]);
 Check("reordered same lines are not new", reorder.Count == 0);
 
+var jitter = new DamageLineBuffer();
+jitter.MarkReady();
+jitter.Prime(["You crush a crystal dervish for 32 points of damage."]);
+var jittered = jitter.Observe(["You crush a crystal dervish for 32 points of damage"]);
+Check("punctuation jitter is not a new hit", jittered.Count == 0);
+jitter.Observe(["You have slain a crystal dervish!"]);
+var returned = jitter.Observe(
+[
+    "You have slain a crystal dervish!",
+    "You crush a crystal dervish for 32 points of damage."
+]);
+Check("same crush after it leaves the screen is new",
+    returned.Count == 1 && Out(returned[0], 32, "a crystal dervish", "crush"));
+
+var wrapped = DamageLineParser.JoinWrapped(
+[
+    "Your Greater Pestilence hits a tormented guardian for 438 points of",
+    "Disease Damage."
+]);
+Check("wrapped pestilence is one hit",
+    wrapped.Count == 1
+    && Out(wrapped[0], 438, "a tormented guardian", "Greater Pestilence"));
+var wrappedCrush = DamageLineParser.JoinWrapped(
+[
+    "You crush a crystal dervish for 32",
+    "points of damage."
+]);
+Check("wrapped crush is one hit",
+    wrappedCrush.Count == 1 && Out(wrappedCrush[0], 32, "a crystal dervish", "crush"));
+Check("pestilence line",
+    Out("Your Greater Pestilence hits a tormented guardian for 438 points of Disease Damage.",
+        438, "a tormented guardian", "Greater Pestilence"));
+Check("crush line",
+    Out("You crush a crystal dervish for 32 points of damage.", 32, "a crystal dervish", "crush"));
+var separateHits = DamageLineParser.JoinWrapped(
+[
+    "You crush a crystal dervish for 32 points of damage.",
+    "Your Greater Pestilence hits a tormented guardian for 438 points of Disease Damage."
+]);
+Check("adjacent hits stay separate",
+    separateHits.Count == 2
+    && Out(separateHits[0], 32, "a crystal dervish", "crush")
+    && Out(separateHits[1], 438, "a tormented guardian", "Greater Pestilence"));
+
 Check("slain line",
     DamageLineParser.TryParseSlain("[07:28:10] You have slain a crystal dervish!", out var slain)
     && slain == "a crystal dervish");
@@ -151,7 +195,7 @@ screen.ApplyFrame([slainText], [slainText, kill], t0.AddSeconds(3));
 Check("slain line stops the fight",
     !screen.Tracking && screen.HasFight && screen.SlainTarget == "a crystal dervish" && screen.DamageDealt == 40);
 screen.ApplyFrame(
-    ["You have slain a crystal dervish", "You slash a crystal dervish for 40 points of damage"],
+    ["You have slain a crystal dervish"],
     ["You have slain a crystal dervish", kill],
     t0.AddSeconds(4));
 Check("leftover slain OCR does not open a fight", !screen.Tracking && screen.DamageDealt == 40);
@@ -180,7 +224,7 @@ Check("party kill ends the fight",
     !partyFight.Tracking && partyFight.HasFight && partyFight.DamageDealt == 50
     && partyFight.SlainBy == "Andromocles" && partyFight.SlainTarget == "a tormented guardian");
 partyFight.ApplyFrame(
-    [partySlain, partyBlow],
+    [partySlain],
     [partySlain, partyBlow],
     t0.AddSeconds(3));
 Check("leftover party slain does not open a fight", !partyFight.Tracking && partyFight.DamageDealt == 50);
@@ -198,6 +242,33 @@ partyFight.ApplyFrame(
     [partySlain, "A wolf hits YOU for 7 points of damage."],
     t0.AddSeconds(8));
 Check("a hit after a party kill starts the next fight", partyFight.Tracking && partyFight.DamageDealt == 0);
+
+var pest = "Your Greater Pestilence hits a tormented guardian for 438 points of Disease Damage.";
+var crush = "You crush a crystal dervish for 32 points of damage.";
+var stuck = new DamageFight();
+stuck.ApplyFrame([crush], [crush], t0);
+stuck.ApplyFrame(
+    ["You have slain a crystal dervish!"],
+    [crush, "You have slain a crystal dervish!"],
+    t0.AddSeconds(2));
+Check("kill screen is stopped", !stuck.Tracking && stuck.DamageDealt == 32);
+stuck.ApplyFrame([crush], [crush, "You have slain a crystal dervish!"], t0.AddSeconds(3));
+Check("repeated crush after the kill still counts",
+    stuck.Tracking && stuck.DamageDealt == 32 && stuck.Abilities[0].Name == "Crush");
+stuck.ApplyFrame([pest], [crush, pest], t0.AddSeconds(4));
+Check("pestilence counts in the new fight",
+    stuck.Tracking && stuck.DamageDealt == 470
+    && stuck.Abilities.Any(row => row.Name == "Greater Pestilence" && row.Damage == 438));
+var splitFight = new DamageFight();
+splitFight.ApplyFrame(["You have slain a rat!"], ["You have slain a rat!"], t0);
+var splitHit = DamageLineParser.JoinWrapped(
+[
+    "Your Greater Pestilence hits a tormented guardian for 438 points of",
+    "Disease Damage."
+]);
+splitFight.ApplyFrame(splitHit, splitHit, t0.AddSeconds(2));
+Check("a wrapped hit starts the fight that stayed stopped",
+    splitFight.Tracking && splitFight.DamageDealt == 438);
 
 if (failed > 0)
 {

@@ -2,7 +2,8 @@ namespace MandM.Services;
 
 /// <summary>
 /// Same baseline rule as buffs: the first OCR pass is remembered and does not count.
-/// Later passes emit only lines that newly appeared (a scroll-in, or a higher copy count).
+/// Later passes emit only lines that newly appeared. Wrapped OCR lines are joined first.
+/// Punctuation-only changes of a line still on screen are not new hits.
 /// </summary>
 public sealed class DamageLineBuffer
 {
@@ -44,12 +45,12 @@ public sealed class DamageLineBuffer
                 list.Add(collapsed);
         }
 
-        return list;
+        return DamageLineParser.JoinWrapped(list);
     }
 
     /// <summary>
-    /// Lines whose copy count rose since the previous frame.
-    /// A count increase is a new event, same as buffs. Reordering the same text does not count.
+    /// Lines whose canonical copy count rose since the previous frame.
+    /// A real new swing counts. Reordering, or a dropped exclamation mark on the same line, does not.
     /// </summary>
     public static List<string> NewLines(IReadOnlyList<string> previous, IReadOnlyList<string> current)
     {
@@ -58,15 +59,23 @@ public sealed class DamageLineBuffer
 
         var was = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var line in previous)
-            was[line] = was.GetValueOrDefault(line) + 1;
+        {
+            var key = DamageLineParser.Canonical(line);
+            if (key.Length == 0)
+                continue;
+            was[key] = was.GetValueOrDefault(key) + 1;
+        }
 
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         var added = new List<string>();
         foreach (var line in current)
         {
-            var n = seen.GetValueOrDefault(line) + 1;
-            seen[line] = n;
-            if (n > was.GetValueOrDefault(line))
+            var key = DamageLineParser.Canonical(line);
+            if (key.Length == 0)
+                continue;
+            var n = seen.GetValueOrDefault(key) + 1;
+            seen[key] = n;
+            if (n > was.GetValueOrDefault(key))
                 added.Add(line);
         }
 

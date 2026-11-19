@@ -47,6 +47,54 @@ public static class DamageLineParser
     public static string Collapse(string? raw) =>
         string.IsNullOrWhiteSpace(raw) ? string.Empty : Whitespace.Replace(raw.Trim(), " ");
 
+    /// <summary>
+    /// Windows OCR wraps one combat sentence across visual lines. Join a fragment
+    /// with the following line when neither is a hit on its own and together they are.
+    /// </summary>
+    public static List<string> JoinWrapped(IReadOnlyList<string> lines)
+    {
+        var result = new List<string>(lines.Count);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var combined = Collapse(lines[i]);
+            if (combined.Length == 0)
+                continue;
+            if (IsCompleteEvent(combined))
+            {
+                result.Add(combined);
+                continue;
+            }
+
+            var acc = combined;
+            var consumed = 0;
+            for (var extra = 1; extra <= 2 && i + extra < lines.Count; extra++)
+            {
+                var next = Collapse(lines[i + extra]);
+                if (next.Length == 0 || IsCompleteEvent(next))
+                    break;
+                acc = acc + " " + next;
+                consumed = extra;
+                if (IsCompleteEvent(acc))
+                    break;
+            }
+
+            if (consumed > 0 && IsCompleteEvent(acc))
+            {
+                result.Add(acc);
+                i += consumed;
+            }
+            else
+            {
+                result.Add(combined);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool IsCompleteEvent(string line) =>
+        IsSlainLine(line) || TryParse(line, out _);
+
     /// <summary>Letters, digits, and single spaces. Timestamps and punctuation are removed.</summary>
     public static string Canonical(string? raw)
     {
