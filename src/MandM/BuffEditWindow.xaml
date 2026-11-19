@@ -104,7 +104,7 @@
                 <ComboBox Grid.Column="2" Name="CmbWarnRegion"
                           DisplayMemberPath="Name" SelectedValuePath="Id"/>
               </Grid>
-              <TextBlock Text="Leave warn text empty to keep the time-based warn above."
+              <TextBlock Text="Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown — put fade/warn on the same chat region that shows those messages. Phrases match on word boundaries (fade “You appear” will not steal warn “…appearing”)."
                          Foreground="#66879D" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
           </Border>

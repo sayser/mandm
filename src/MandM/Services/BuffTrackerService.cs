@@ -73,7 +73,6 @@ public sealed class BuffTrackerService : IDisposable
     /// <summary>OCR lines from one named capture region (live monitoring).</summary>
     public void ProcessRegionLines(string regionId, IEnumerable<string> lines)
     {
-        // If a baseline is pending (startup / settings change), only seed counters.
         bool accept;
         lock (_gate)
             accept = _acceptMatchEvents;
@@ -93,25 +92,13 @@ public sealed class BuffTrackerService : IDisposable
 
         foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
         {
-            if (RegionEquals(def.FadeRegionId, regionId))
-            {
-                var fadeNow = CountMatches(entries, blob, def.FadeText);
-                int fadeWas;
-                bool allow;
-                lock (_gate)
-                {
-                    fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
-                    _previousFadeCounts[def.Id] = fadeNow;
-                    allow = fireEvents && _acceptMatchEvents;
-                }
-
-                if (allow && fadeNow > fadeWas)
-                    ClearBuff(def.Id);
-            }
+            // Order: cast → land → warn → fade.
+            // Warn before fade so a warn line that also loosely resembles fade still alarms
+            // before any clear, and fade uses specificity against warn/land/cast.
 
             if (RegionEquals(def.CastRegionId, regionId))
             {
-                var castNow = CountMatches(entries, blob, def.CastText);
+                var castNow = CountPhraseMatches(entries, blob, def, def.CastText);
                 int castWas;
                 bool allow;
                 lock (_gate)
@@ -126,7 +113,7 @@ public sealed class BuffTrackerService : IDisposable
 
             if (RegionEquals(def.LandRegionId, regionId))
             {
-                var landNow = CountMatches(entries, blob, def.LandText);
+                var landNow = CountPhraseMatches(entries, blob, def, def.LandText);
                 int landWas;
                 bool newLandOccurrence;
                 bool castArmedLand;
@@ -146,7 +133,7 @@ public sealed class BuffTrackerService : IDisposable
 
             if (RegionEquals(def.WarnRegionId, regionId) && !string.IsNullOrWhiteSpace(def.WarnText))
             {
-                var warnNow = CountMatches(entries, blob, def.WarnText);
+                var warnNow = CountPhraseMatches(entries, blob, def, def.WarnText);
                 int warnWas;
                 bool allow;
                 lock (_gate)
@@ -159,7 +146,79 @@ public sealed class BuffTrackerService : IDisposable
                 if (allow && warnNow > warnWas)
                     TriggerWarnFromText(def);
             }
+
+            if (RegionEquals(def.FadeRegionId, regionId))
+            {
+                var fadeNow = CountPhraseMatches(entries, blob, def, def.FadeText);
+                int fadeWas;
+                bool allow;
+                lock (_gate)
+                {
+                    fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
+                    _previousFadeCounts[def.Id] = fadeNow;
+                    allow = fireEvents && _acceptMatchEvents;
+                }
+
+                if (allow && fadeNow > fadeWas)
+                    ClearBuff(def.Id);
+            }
         }
+    }
+
+    /// <summary>
+    /// Count lines that match <paramref name="needle"/> for this buff, but let a longer
+    /// configured phrase that also matches "own" the line (warn over short fade, etc.).
+    /// </summary>
+    private static int CountPhraseMatches(
+        List<string> entries,
+        string blob,
+        BuffDefinition def,
+        string? needle)
+    {
+        if (string.IsNullOrWhiteSpace(needle))
+            return 0;
+
+        var count = entries.Count(line => LineOwnsPhrase(line, def, needle));
+        if (count == 0 && LineOwnsPhrase(blob, def, needle))
+            return 1;
+        return count;
+    }
+
+    private static bool LineOwnsPhrase(string line, BuffDefinition def, string needle)
+    {
+        if (!TextMatch.ContainsLoose(line, needle))
+            return false;
+
+        // Longer same-buff phrases that also match steal the line from shorter ones.
+        // Example: fade "You appear" must not claim warn "You begin to feel yourself appearing".
+        foreach (var other in PhrasesOf(def))
+        {
+            if (string.Equals(other, needle, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!TextMatch.ContainsLoose(line, other))
+                continue;
+
+            var otherNorm = TextMatch.Normalize(other);
+            var needleNorm = TextMatch.Normalize(needle);
+            if (otherNorm.Length > needleNorm.Length)
+                return false;
+
+            // Same length rare; if the other phrase contains this needle, prefer other.
+            if (otherNorm.Length == needleNorm.Length)
+                continue;
+            if (TextMatch.ContainsLoose(other, needle))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static IEnumerable<string> PhrasesOf(BuffDefinition def)
+    {
+        if (!string.IsNullOrWhiteSpace(def.CastText)) yield return def.CastText;
+        if (!string.IsNullOrWhiteSpace(def.LandText)) yield return def.LandText;
+        if (!string.IsNullOrWhiteSpace(def.FadeText)) yield return def.FadeText;
+        if (!string.IsNullOrWhiteSpace(def.WarnText)) yield return def.WarnText;
     }
 
     private void TriggerWarnFromText(BuffDefinition def)
@@ -186,17 +245,6 @@ public sealed class BuffTrackerService : IDisposable
     private static bool RegionEquals(string? configured, string regionId) =>
         !string.IsNullOrWhiteSpace(configured)
         && string.Equals(configured, regionId, StringComparison.Ordinal);
-
-    private static int CountMatches(List<string> entries, string blob, string? needle)
-    {
-        if (string.IsNullOrWhiteSpace(needle))
-            return 0;
-
-        var count = entries.Count(line => TextMatch.ContainsLoose(line, needle));
-        if (count == 0 && TextMatch.ContainsLoose(blob, needle))
-            return 1;
-        return count;
-    }
 
     public void SetLoadedAbilities(IEnumerable<string> names)
     {
@@ -275,7 +323,6 @@ public sealed class BuffTrackerService : IDisposable
             if (remaining <= TimeSpan.Zero)
                 continue;
 
-            // Time-based warn only when no warn OCR phrase is configured.
             if (string.IsNullOrWhiteSpace(buff.Definition.WarnText)
                 && !buff.Warned
                 && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
