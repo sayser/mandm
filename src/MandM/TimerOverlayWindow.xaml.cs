@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.Windows;
+using MandM.Models;
 using MandM.Services;
 
 namespace MandM;
@@ -52,4 +53,20 @@ public partial class TimerOverlayWindow : Window
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    private static ActiveUserTimer? TimerFromSender(object sender) =>
+        (sender as FrameworkElement)?.Tag as ActiveUserTimer
+        ?? ((sender as FrameworkElement)?.DataContext as ActiveUserTimer);
+
+    private void TimerStart_Click(object sender, RoutedEventArgs e)
+    {
+        TimerFromSender(sender)?.Start();
+        ListTimers.Items.Refresh();
+    }
+
+    private void TimerStop_Click(object sender, RoutedEventArgs e)
+    {
+        TimerFromSender(sender)?.Stop();
+        ListTimers.Items.Refresh();
+    }
 }

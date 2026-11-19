@@ -22,8 +22,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         TxtVersion.Text = $"v{UpdateCheckService.GetLocalVersion()}";
         ListActive.ItemsSource = App.State.Tracker.ActiveBuffs;
-        ListAbilities.ItemsSource = App.State.Tracker.LoadedAbilities;
         ListTimers.ItemsSource = App.State.UserTimers.Timers;
+        ListRegionOcr.ItemsSource = App.State.Monitor.RegionSnapshots;
         RefreshBuffList();
         UpdateOverlayButton();
         UpdateTimerOverlayButton();
@@ -36,7 +36,6 @@ public partial class MainWindow : Window
             TxtStatus.Text = s;
             RefreshStatusPills();
         });
-        App.State.Monitor.CombatPreviewChanged += s => Dispatcher.Invoke(() => TxtCombatPreview.Text = s);
         App.State.Tracker.Changed += () => Dispatcher.Invoke(() =>
         {
             RefreshBuffList();
@@ -113,9 +112,7 @@ public partial class MainWindow : Window
     {
         var ocrOk = App.State.Ocr.IsAvailable;
         OcrDot.Fill = ocrOk ? OcrOnlineBrush : OcrOfflineBrush;
-        TxtOcrPill.Text = ocrOk
-            ? (string.IsNullOrWhiteSpace(App.State.Monitor.Status) ? "Live" : Truncate(App.State.Monitor.Status, 28))
-            : "Unavailable";
+        TxtOcrPill.Text = ocrOk ? "Live" : "Unavailable";
         TxtOverlayPill.Text = App.State.Settings.OverlayEnabled ? "On" : "Off";
         TxtOverlayPill.Foreground = App.State.Settings.OverlayEnabled ? OcrOnlineBrush : MutedPillBrush;
 
@@ -163,14 +160,12 @@ public partial class MainWindow : Window
 
     private void ModuleTab_Checked(object sender, RoutedEventArgs e)
     {
-        if (PanelBuffs is null || PanelDamage is null || PanelTimers is null) return;
+        if (PanelBuffs is null || PanelDamage is null || PanelTimers is null || PanelOcr is null) return;
         PanelBuffs.Visibility = TabBuffs.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PanelTimers.Visibility = TabTimers.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        PanelOcr.Visibility = TabOcr.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         PanelDamage.Visibility = TabDamage.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
     }
-
-    private static string Truncate(string value, int max) =>
-        value.Length <= max ? value : value[..(max - 1)] + "…";
 
     private static SolidColorBrush Freeze(Color color)
     {

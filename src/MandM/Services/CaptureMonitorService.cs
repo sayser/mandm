@@ -1,10 +1,12 @@
+using System.Collections.ObjectModel;
 using System.Drawing;
+using System.Windows;
 using MandM.Models;
 
 namespace MandM.Services;
 
 /// <summary>
-/// Periodically OCR's live capture regions, skipping unchanged frames and reusing buffers.
+/// Periodically OCR's valid capture regions, skipping unchanged frames and reusing buffers.
 /// </summary>
 public sealed class CaptureMonitorService : IDisposable
 {
@@ -24,6 +26,7 @@ public sealed class CaptureMonitorService : IDisposable
     private long _totalSkipped;
 
     public string Status { get; private set; } = "Idle";
+    public ObservableCollection<RegionOcrSnapshot> RegionSnapshots { get; } = [];
     public event Action<string>? StatusChanged;
     public event Action<string>? CombatPreviewChanged;
     public event Action<string>? AbilitiesPreviewChanged;
@@ -33,17 +36,20 @@ public sealed class CaptureMonitorService : IDisposable
         _settings = settings;
         _ocr = ocr;
         _tracker = tracker;
+        SyncRegionSnapshots();
     }
 
     public void UpdateSettings(AppSettings settings)
     {
         _settings = settings;
+        SyncRegionSnapshots();
         RequestBaseline();
     }
 
     public void Start()
     {
         Stop();
+        SyncRegionSnapshots();
         RequestBaseline();
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token));
@@ -156,8 +162,7 @@ public sealed class CaptureMonitorService : IDisposable
                     ? Math.Min(interval * 2, Math.Max(interval, 1200))
                     : interval;
 
-                SetStatus(
-                    $"Live {live.Count} · OCR {ocrThisPass}/{capturedThisPass} · skip {_totalSkipped} · every {delay} ms");
+                SetStatus("Live");
 
                 await Task.Delay(delay, ct);
             }
@@ -204,41 +209,44 @@ public sealed class CaptureMonitorService : IDisposable
             _tracker.MarkBaselineReady();
     }
 
-    /// <summary>
-    /// Only regions that are valid and either Abilities or referenced by an enabled buff.
-    /// Unset / unused rectangles never wake OCR.
-    /// </summary>
-    private static List<NamedCaptureRegion> GetLiveRegions(AppSettings settings)
-    {
-        var all = settings.CaptureRegions;
-        if (all is null || all.Count == 0)
-            return [];
+    /// <summary>All named regions with a valid rectangle — feeds buffs and the OCR tab.</summary>
+    private static List<NamedCaptureRegion> GetLiveRegions(AppSettings settings) =>
+        settings.CaptureRegions?.Where(r => r.IsValid).ToList() ?? [];
 
-        var needed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var buff in settings.Buffs.Where(b => b.Enabled))
+    public void SyncRegionSnapshots()
+    {
+        void Apply()
         {
-            AddId(needed, buff.CastRegionId);
-            AddId(needed, buff.LandRegionId);
-            AddId(needed, buff.FadeRegionId);
-            AddId(needed, buff.WarnRegionId);
+            var regions = _settings.CaptureRegions ?? [];
+            var keep = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var region in regions)
+            {
+                keep.Add(region.Id);
+                var snap = RegionSnapshots.FirstOrDefault(s => s.Id == region.Id);
+                if (snap is null)
+                {
+                    snap = new RegionOcrSnapshot { Id = region.Id };
+                    RegionSnapshots.Add(snap);
+                }
+
+                snap.Name = region.Name;
+                snap.BoundsDisplay = region.BoundsDisplay;
+                snap.IsValid = region.IsValid;
+                if (!region.IsValid)
+                    snap.Text = string.Empty;
+            }
+
+            for (var i = RegionSnapshots.Count - 1; i >= 0; i--)
+            {
+                if (!keep.Contains(RegionSnapshots[i].Id))
+                    RegionSnapshots.RemoveAt(i);
+            }
         }
 
-        var live = new List<NamedCaptureRegion>(all.Count);
-        foreach (var region in all)
-        {
-            if (!region.IsValid)
-                continue;
-            if (IsAbilitiesRegion(region) || needed.Contains(region.Id))
-                live.Add(region);
-        }
-
-        return live;
-    }
-
-    private static void AddId(HashSet<string> set, string? id)
-    {
-        if (!string.IsNullOrWhiteSpace(id))
-            set.Add(id);
+        if (Application.Current?.Dispatcher.CheckAccess() == true)
+            Apply();
+        else
+            Application.Current?.Dispatcher.Invoke(Apply);
     }
 
     private RegionSlot GetOrCreateSlot(string id)
@@ -256,6 +264,7 @@ public sealed class CaptureMonitorService : IDisposable
         IReadOnlyList<string> lines,
         RegionSlot slot)
     {
+        string text;
         if (IsAbilitiesRegion(named))
         {
             var cleaned = new List<string>(lines.Count);
@@ -266,7 +275,7 @@ public sealed class CaptureMonitorService : IDisposable
                     cleaned.Add(c);
             }
 
-            var text = string.Join(Environment.NewLine, cleaned);
+            text = string.Join(Environment.NewLine, cleaned);
             if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
             {
                 slot.LastPreview = text;
@@ -275,46 +284,40 @@ public sealed class CaptureMonitorService : IDisposable
 
             _tracker.SetLoadedAbilities(cleaned);
         }
-        else if (IsCombatPreviewRegion(named, settings))
+        else
         {
-            var text = string.Join(Environment.NewLine, lines);
+            text = string.Join(Environment.NewLine, lines);
             if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
             {
                 slot.LastPreview = text;
-                CombatPreviewChanged?.Invoke(text);
+                if (IsCombatPreviewRegion(named, settings))
+                    CombatPreviewChanged?.Invoke(text);
             }
         }
+
+        UpdateSnapshotText(named.Id, text);
+    }
+
+    private void UpdateSnapshotText(string regionId, string text)
+    {
+        void Apply()
+        {
+            var snap = RegionSnapshots.FirstOrDefault(s => s.Id == regionId);
+            if (snap is null) return;
+            snap.Text = text;
+        }
+
+        if (Application.Current?.Dispatcher.CheckAccess() == true)
+            Apply();
+        else
+            Application.Current?.Dispatcher.Invoke(Apply);
     }
 
     private static bool IsAbilitiesRegion(NamedCaptureRegion named) =>
         string.Equals(named.Name, "Abilities", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsCombatPreviewRegion(NamedCaptureRegion named, AppSettings settings)
-    {
-        if (string.Equals(named.Name, "Combat Text", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var first = settings.CaptureRegions
-            .FirstOrDefault(r => r.IsValid && !IsAbilitiesRegion(r) && IsLiveForPreview(r, settings));
-        return first is not null && string.Equals(first.Id, named.Id, StringComparison.Ordinal);
-    }
-
-    private static bool IsLiveForPreview(NamedCaptureRegion region, AppSettings settings)
-    {
-        foreach (var buff in settings.Buffs.Where(b => b.Enabled))
-        {
-            if (IdEquals(buff.CastRegionId, region.Id)
-                || IdEquals(buff.LandRegionId, region.Id)
-                || IdEquals(buff.FadeRegionId, region.Id)
-                || IdEquals(buff.WarnRegionId, region.Id))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IdEquals(string? a, string b) =>
-        !string.IsNullOrWhiteSpace(a) && string.Equals(a, b, StringComparison.Ordinal);
+    private static bool IsCombatPreviewRegion(NamedCaptureRegion named, AppSettings settings) =>
+        string.Equals(named.Name, "Combat Text", StringComparison.OrdinalIgnoreCase);
 
     private static string? CleanAbilityLine(string line)
     {

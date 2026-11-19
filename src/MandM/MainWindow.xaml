@@ -114,6 +114,9 @@
               <RadioButton Name="TabTimers" Content="TIMER" Tag="⏱" GroupName="PrimaryModule"
                            Style="{StaticResource PrimaryModuleNavButton}" MinWidth="110"
                            Checked="ModuleTab_Checked"/>
+              <RadioButton Name="TabOcr" Content="OCR" Tag="☰" GroupName="PrimaryModule"
+                           Style="{StaticResource PrimaryModuleNavButton}" MinWidth="100"
+                           Checked="ModuleTab_Checked"/>
               <RadioButton Name="TabDamage" Content="DAMAGE TRACKER" Tag="⚔" GroupName="PrimaryModule"
                            Style="{StaticResource PrimaryModuleNavButton}" MinWidth="160"
                            Checked="ModuleTab_Checked"/>
@@ -128,255 +131,206 @@
       </Border>
 
       <Grid>
-        <!-- BUFFS workspace -->
+        <!-- BUFFS — EQDM-style tracker (active + tracked list) -->
         <Grid Name="PanelBuffs">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="1.55*"/>
-          <ColumnDefinition Width="14"/>
-          <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource GlassCard}" Padding="16,12">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="200"/>
+                <RowDefinition Height="14"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
 
-        <!-- Left: active + tracked buffs -->
-        <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="16,12">
-          <Grid>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="170"/>
-              <RowDefinition Height="12"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="*"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="120"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                <TextBlock Text="◈" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <StackPanel>
-                  <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"
-                             TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="Timers start when Land text is seen in the buff’s chosen capture region"
-                             Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
-                </StackPanel>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Style="{StaticResource PanelActionButton}" Tag="＋" Content="Add Buff" Click="AddBuff_Click"/>
-                <Button Style="{StaticResource PanelActionButton}" Tag="✎" Content="Edit" Click="EditBuff_Click"/>
-                <Button Style="{StaticResource PanelActionButton}" Tag="🗑" Content="Delete" Click="DeleteBuff_Click"/>
-              </StackPanel>
-            </Grid>
-
-            <TextBlock Grid.Row="1" Text="ACTIVE NOW" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
-
-            <Border Grid.Row="2" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
-              <Grid>
-                <ListBox Name="ListActive" Background="Transparent" BorderThickness="0" Margin="4"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                  <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                      <Setter Property="Padding" Value="0"/>
-                      <Setter Property="Margin" Value="0,0,0,6"/>
-                      <Setter Property="Focusable" Value="False"/>
-                      <Setter Property="Template">
-                        <Setter.Value>
-                          <ControlTemplate TargetType="ListBoxItem">
-                            <ContentPresenter/>
-                          </ControlTemplate>
-                        </Setter.Value>
-                      </Setter>
-                    </Style>
-                  </ListBox.ItemContainerStyle>
-                  <ListBox.ItemTemplate>
-                    <DataTemplate>
-                      <Border x:Name="BuffRow" BorderThickness="1" CornerRadius="10"
-                              Background="#660A2E2E" BorderBrush="#AA2EE6C8" Padding="10,8" MinHeight="44">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                          </Grid.ColumnDefinitions>
-                          <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                                       Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
-                            <ProgressBar Height="3" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
-                                         Margin="0,6,0,0" BorderThickness="0" Background="#22081420">
-                              <ProgressBar.Foreground>
-                                <SolidColorBrush Color="#A98BFF"/>
-                              </ProgressBar.Foreground>
-                            </ProgressBar>
-                          </StackPanel>
-                          <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
-                                     FontWeight="Bold" FontSize="20" Margin="10,0,0,0"
-                                     VerticalAlignment="Center" FontFamily="Segoe UI">
-                            <TextBlock.Style>
-                              <Style TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="#A98BFF"/>
-                                <Style.Triggers>
-                                  <DataTrigger Binding="{Binding IsWarning}" Value="True">
-                                    <Setter Property="Foreground" Value="#FFBD57"/>
-                                  </DataTrigger>
-                                </Style.Triggers>
-                              </Style>
-                            </TextBlock.Style>
-                          </TextBlock>
-                        </Grid>
-                        <Border.Style>
-                          <Style TargetType="Border">
-                            <Style.Triggers>
-                              <DataTrigger Binding="{Binding IsWarning}" Value="True">
-                                <Setter Property="BorderBrush" Value="#FFBD57"/>
-                                <DataTrigger.EnterActions>
-                                  <BeginStoryboard x:Name="WarnPulse">
-                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                      <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                       From="0.55" To="1" Duration="0:0:0.38"/>
-                                    </Storyboard>
-                                  </BeginStoryboard>
-                                </DataTrigger.EnterActions>
-                                <DataTrigger.ExitActions>
-                                  <StopStoryboard BeginStoryboardName="WarnPulse"/>
-                                </DataTrigger.ExitActions>
-                              </DataTrigger>
-                            </Style.Triggers>
-                          </Style>
-                        </Border.Style>
-                      </Border>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-                <TextBlock Name="TxtNoActive" Text="No tracked buffs are currently active."
-                           Foreground="#7899AD" FontSize="11"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           IsHitTestVisible="False"/>
-              </Grid>
-            </Border>
-
-            <DockPanel Grid.Row="4" Margin="0,0,0,6">
-              <TextBlock Text="TRACKED BUFFS" Style="{StaticResource MetricLabel}" VerticalAlignment="Center"/>
-            </DockPanel>
-
-            <Border Grid.Row="5" Background="#9A0B263A" BorderBrush="#56839C" BorderThickness="1" CornerRadius="10,10,0,0" Padding="10,8">
-              <Grid>
+              <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="70"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="80"/>
-                  <ColumnDefinition Width="70"/>
-                  <ColumnDefinition Width="80"/>
+                  <ColumnDefinition Width="*" MinWidth="120"/>
+                  <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="TRACK" Style="{StaticResource MetricLabel}"/>
-                <TextBlock Grid.Column="1" Text="BUFF NAME" Style="{StaticResource MetricLabel}"/>
-                <TextBlock Grid.Column="2" Text="DURATION" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
-                <TextBlock Grid.Column="3" Text="WARN" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
-                <TextBlock Grid.Column="4" Text="ALARM" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
-              </Grid>
-            </Border>
-
-            <ListBox Grid.Row="6" Name="ListBuffs" BorderThickness="1,0,1,1" BorderBrush="#56839C"
-                     Background="#61071F31" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-              <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
-                  <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                  <Setter Property="Padding" Value="0"/>
-                  <Setter Property="Template">
-                    <Setter.Value>
-                      <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Row" Background="#360B2638" BorderBrush="#2C4D62"
-                                BorderThickness="0,0,0,1" Padding="10,8">
-                          <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                          <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Row" Property="Background" Value="#8A17354D"/>
-                            <Setter TargetName="Row" Property="BorderBrush" Value="#8F72E8"/>
-                          </Trigger>
-                          <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Row" Property="Background" Value="#6916384D"/>
-                          </Trigger>
-                        </ControlTemplate.Triggers>
-                      </ControlTemplate>
-                    </Setter.Value>
-                  </Setter>
-                </Style>
-              </ListBox.ItemContainerStyle>
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Grid Height="36">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="70"/>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="80"/>
-                      <ColumnDefinition Width="70"/>
-                      <ColumnDefinition Width="80"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding StatusDisplay}" VerticalAlignment="Center" FontSize="11"
-                               Foreground="#39E0CC"/>
-                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold"
-                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" HorizontalAlignment="Right"
-                               VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="3" Text="{Binding WarnDisplay}" HorizontalAlignment="Right"
-                               VerticalAlignment="Center" Foreground="#A9C3D3"/>
-                    <TextBlock Grid.Column="4" Text="{Binding AlertDisplay}" HorizontalAlignment="Right"
-                               VerticalAlignment="Center" FontSize="10" Foreground="#7899AD"
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <TextBlock Text="◈" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                  <StackPanel>
+                    <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"
                                TextTrimming="CharacterEllipsis"/>
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-
-            <TextBlock Grid.Row="7" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
-                       Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set."/>
-          </Grid>
-        </Border>
-
-        <!-- Right: abilities + combat preview -->
-        <DockPanel Grid.Column="2">
-          <Border DockPanel.Dock="Top" Style="{StaticResource GlassCard}" Padding="14,12" Margin="0,0,0,14" Height="250">
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="◇" FontSize="18" Foreground="#57A99F" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                <StackPanel>
-                  <TextBlock Text="LOADED ABILITIES" Style="{StaticResource SectionLabel}"/>
-                  <TextBlock Text="Best-effort OCR of the Abilities capture region" Foreground="#66879D" FontSize="10"/>
+                    <TextBlock Text="Timers start when Land text is seen in the buff’s chosen capture region"
+                               Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+                  </StackPanel>
                 </StackPanel>
-              </StackPanel>
-              <ListBox Name="ListAbilities" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                  <Button Style="{StaticResource PanelActionButton}" Tag="＋" Content="Add Buff" Click="AddBuff_Click"/>
+                  <Button Style="{StaticResource PanelActionButton}" Tag="✎" Content="Edit" Click="EditBuff_Click"/>
+                  <Button Style="{StaticResource PanelActionButton}" Tag="🗑" Content="Delete" Click="DeleteBuff_Click"/>
+                </StackPanel>
+              </Grid>
+
+              <TextBlock Grid.Row="1" Text="ACTIVE NOW" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
+
+              <Border Grid.Row="2" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
+                <Grid>
+                  <ListBox Name="ListActive" Background="Transparent" BorderThickness="0" Margin="4"
+                           ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemContainerStyle>
+                      <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0,0,0,6"/>
+                        <Setter Property="Focusable" Value="False"/>
+                        <Setter Property="Template">
+                          <Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem">
+                              <ContentPresenter/>
+                            </ControlTemplate>
+                          </Setter.Value>
+                        </Setter>
+                      </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <Border x:Name="BuffRow" BorderThickness="1" CornerRadius="10"
+                                Background="#660A2E2E" BorderBrush="#AA2EE6C8" Padding="10,8" MinHeight="44">
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="*"/>
+                              <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                         Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
+                              <ProgressBar Height="3" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                           Margin="0,6,0,0" BorderThickness="0" Background="#22081420">
+                                <ProgressBar.Foreground>
+                                  <SolidColorBrush Color="#A98BFF"/>
+                                </ProgressBar.Foreground>
+                              </ProgressBar>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
+                                       FontWeight="Bold" FontSize="20" Margin="10,0,0,0"
+                                       VerticalAlignment="Center" FontFamily="Segoe UI">
+                              <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                  <Setter Property="Foreground" Value="#A98BFF"/>
+                                  <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                      <Setter Property="Foreground" Value="#FFBD57"/>
+                                    </DataTrigger>
+                                  </Style.Triggers>
+                                </Style>
+                              </TextBlock.Style>
+                            </TextBlock>
+                          </Grid>
+                          <Border.Style>
+                            <Style TargetType="Border">
+                              <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                  <Setter Property="BorderBrush" Value="#FFBD57"/>
+                                  <DataTrigger.EnterActions>
+                                    <BeginStoryboard x:Name="WarnPulse">
+                                      <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0.55" To="1" Duration="0:0:0.38"/>
+                                      </Storyboard>
+                                    </BeginStoryboard>
+                                  </DataTrigger.EnterActions>
+                                  <DataTrigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="WarnPulse"/>
+                                  </DataTrigger.ExitActions>
+                                </DataTrigger>
+                              </Style.Triggers>
+                            </Style>
+                          </Border.Style>
+                        </Border>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <TextBlock Name="TxtNoActive" Text="No tracked buffs are currently active."
+                             Foreground="#7899AD" FontSize="11"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             IsHitTestVisible="False"/>
+                </Grid>
+              </Border>
+
+              <DockPanel Grid.Row="4" Margin="0,0,0,6">
+                <TextBlock Text="TRACKED BUFFS" Style="{StaticResource MetricLabel}" VerticalAlignment="Center"/>
+              </DockPanel>
+
+              <Border Grid.Row="5" Background="#9A0B263A" BorderBrush="#56839C" BorderThickness="1" CornerRadius="10,10,0,0" Padding="10,8">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="70"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="70"/>
+                    <ColumnDefinition Width="80"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="TRACK" Style="{StaticResource MetricLabel}"/>
+                  <TextBlock Grid.Column="1" Text="BUFF NAME" Style="{StaticResource MetricLabel}"/>
+                  <TextBlock Grid.Column="2" Text="DURATION" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
+                  <TextBlock Grid.Column="3" Text="WARN" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
+                  <TextBlock Grid.Column="4" Text="ALARM" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
+                </Grid>
+              </Border>
+
+              <ListBox Grid.Row="6" Name="ListBuffs" BorderThickness="1,0,1,1" BorderBrush="#56839C"
+                       Background="#61071F31" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                 <ListBox.ItemContainerStyle>
                   <Style TargetType="ListBoxItem">
-                    <Setter Property="Padding" Value="10,6"/>
-                    <Setter Property="Foreground" Value="#E8F5FC"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
-                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Template">
+                      <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                          <Border x:Name="Row" Background="#360B2638" BorderBrush="#2C4D62"
+                                  BorderThickness="0,0,0,1" Padding="10,8">
+                            <ContentPresenter/>
+                          </Border>
+                          <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                              <Setter TargetName="Row" Property="Background" Value="#8A17354D"/>
+                              <Setter TargetName="Row" Property="BorderBrush" Value="#8F72E8"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                              <Setter TargetName="Row" Property="Background" Value="#6916384D"/>
+                            </Trigger>
+                          </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                      </Setter.Value>
+                    </Setter>
                   </Style>
                 </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Height="36">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="80"/>
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding StatusDisplay}" VerticalAlignment="Center" FontSize="11"
+                                 Foreground="#39E0CC"/>
+                      <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold"
+                                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Grid.Column="2" Text="{Binding DurationDisplay}" HorizontalAlignment="Right"
+                                 VerticalAlignment="Center"/>
+                      <TextBlock Grid.Column="3" Text="{Binding WarnDisplay}" HorizontalAlignment="Right"
+                                 VerticalAlignment="Center" Foreground="#A9C3D3"/>
+                      <TextBlock Grid.Column="4" Text="{Binding AlertDisplay}" HorizontalAlignment="Right"
+                                 VerticalAlignment="Center" FontSize="10" Foreground="#7899AD"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
               </ListBox>
-            </DockPanel>
-          </Border>
 
-          <Border Style="{StaticResource GlassCard}" Padding="14,12">
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="☰" FontSize="16" Foreground="#FF9B62" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                <StackPanel>
-                  <TextBlock Text="COMBAT TEXT PREVIEW" Style="{StaticResource SectionLabel}"/>
-                  <TextBlock Text="Live OCR from the Combat Text region" Foreground="#66879D" FontSize="10"/>
-                </StackPanel>
-              </StackPanel>
-              <TextBox Name="TxtCombatPreview" IsReadOnly="True" TextWrapping="Wrap"
-                       VerticalScrollBarVisibility="Auto" AcceptsReturn="True"
-                       FontFamily="Consolas" FontSize="11"
-                       Background="#61071F31" BorderBrush="#56839C"
-                       Foreground="#B8D4E5" CaretBrush="#A98BFF"/>
-            </DockPanel>
+              <TextBlock Grid.Row="7" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
+                         Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set."/>
+            </Grid>
           </Border>
-        </DockPanel>
         </Grid>
 
         <!-- TIMER — named user countdowns + dedicated overlay -->
@@ -462,6 +416,59 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+            </Grid>
+          </Border>
+        </Grid>
+
+        <!-- OCR — live text for every named capture region -->
+        <Grid Name="PanelOcr" Visibility="Collapsed">
+          <Border Style="{StaticResource GlassCard}" Padding="16,12">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="☰" FontSize="20" Foreground="#FF9B62" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                  <TextBlock Text="CAPTURE REGIONS" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                  <TextBlock Text="Live OCR text for every named region — manage rectangles in Options"
+                             Foreground="#66879D" FontSize="10"/>
+                </StackPanel>
+              </StackPanel>
+
+              <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl Name="ListRegionOcr">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Background="#61071F31" BorderBrush="#56839C" BorderThickness="1"
+                              CornerRadius="12" Padding="14,12" Margin="0,0,0,12">
+                        <DockPanel>
+                          <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <DockPanel>
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"
+                                         Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
+                              <TextBlock DockPanel.Dock="Right" Text="{Binding StatusDisplay}"
+                                         FontSize="11" Foreground="#39E0CC" Margin="12,0,0,0"
+                                         VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <TextBlock Text="{Binding BoundsDisplay}" FontSize="10" Foreground="#66879D" Margin="0,2,0,0"/>
+                          </StackPanel>
+                          <TextBox IsReadOnly="True" Text="{Binding Text, Mode=OneWay}"
+                                   TextWrapping="Wrap" AcceptsReturn="True"
+                                   VerticalScrollBarVisibility="Auto" MinHeight="72" MaxHeight="220"
+                                   FontFamily="Consolas" FontSize="11"
+                                   Background="#33081420" BorderBrush="#3D6178"
+                                   Foreground="#B8D4E5" CaretBrush="#A98BFF"/>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
             </Grid>
           </Border>
         </Grid>
