@@ -486,75 +486,154 @@
           </Border>
         </Grid>
 
-        <!-- DAMAGE TRACKER — styled shell (no live DPS yet) -->
+        <!-- DAMAGE TRACKER — personal outgoing / incoming only -->
         <Grid Name="PanelDamage" Visibility="Collapsed">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="14"/>
-            <ColumnDefinition Width="*"/>
-          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource GlassCard}" Padding="16,14">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
 
-          <Border Grid.Column="0" Style="{StaticResource GlassCard}" Padding="16,14">
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-                <TextBlock Text="⚔" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <StackPanel>
-                  <TextBlock Text="DAMAGE RANKING" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                  <TextBlock Text="Placeholder — live combat parsing comes next"
-                             Foreground="#66879D" FontSize="10"/>
+              <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                  <TextBlock Text="⚔" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                  <StackPanel>
+                    <TextBlock Text="DAMAGE TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                    <TextBlock Text="Damage you deal and damage dealt to you. Other players are not counted."
+                               Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+                  </StackPanel>
                 </StackPanel>
-              </StackPanel>
-              <Border Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24">
-                  <TextBlock Text="Coming next" FontSize="18" FontWeight="SemiBold"
-                             Foreground="#D8C2FF" HorizontalAlignment="Center"/>
-                  <TextBlock Text="DPS ranking will appear here once combat parsing lands."
-                             Foreground="#7899AD" FontSize="12" TextWrapping="Wrap"
-                             TextAlignment="Center" Margin="0,8,0,0" MaxWidth="280"/>
-                </StackPanel>
-              </Border>
-            </DockPanel>
-          </Border>
+                <Button Grid.Column="1" Style="{StaticResource PanelActionButton}" Content="Reset"
+                        VerticalAlignment="Center" Click="ResetDamage_Click"/>
+              </Grid>
 
-          <Border Grid.Column="2" Style="{StaticResource GlassCard}" Padding="16,14">
-            <DockPanel>
-              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,12">
-                <TextBlock Text="◎" FontSize="18" Foreground="#57A99F" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <StackPanel>
-                  <TextBlock Text="DAMAGE BREAKDOWN" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                  <TextBlock Text="Offense / Defense / Healing shell — no live data yet"
-                             Foreground="#66879D" FontSize="10"/>
+              <Grid Grid.Row="1" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="220"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,14,0">
+                  <TextBlock Text="DAMAGE WINDOW" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
+                  <ComboBox Name="CmbDamageRegion" DisplayMemberPath="Name"
+                            Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"
+                            SelectionChanged="DamageRegion_Changed"/>
                 </StackPanel>
-              </StackPanel>
-              <Grid>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                  <Border Background="#55301A52" BorderBrush="#C9A6FF" BorderThickness="1.5"
-                          CornerRadius="10" Padding="14,7" Margin="0,0,6,0">
-                    <TextBlock Text="Offense" Foreground="#D8C2FF" FontWeight="SemiBold" FontSize="11"/>
-                  </Border>
-                  <Border Background="Transparent" BorderBrush="#5A7F96" BorderThickness="1.5"
-                          CornerRadius="10" Padding="14,7" Margin="0,0,6,0">
-                    <TextBlock Text="Defense" Foreground="#B7CDDA" FontWeight="SemiBold" FontSize="11"/>
-                  </Border>
-                  <Border Background="Transparent" BorderBrush="#5A7F96" BorderThickness="1.5"
-                          CornerRadius="10" Padding="14,7">
-                    <TextBlock Text="Healing" Foreground="#B7CDDA" FontWeight="SemiBold" FontSize="11"/>
-                  </Border>
-                </StackPanel>
-                <Border Grid.Row="1" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12">
-                  <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <Ellipse Width="96" Height="96" Stroke="#355B73" StrokeThickness="10" Fill="Transparent"
-                             Opacity="0.55" Margin="0,0,0,16"/>
-                    <TextBlock Text="No encounter data" Foreground="#7899AD" FontSize="12"
-                               HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Name="TxtDamageHint" VerticalAlignment="Bottom" TextWrapping="Wrap"
+                           Foreground="#7899AD" FontSize="11" Margin="0,0,0,6"/>
+              </Grid>
+
+              <Grid Grid.Row="2" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Background="#61071F31" BorderBrush="#39E0CC" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                  <StackPanel>
+                    <TextBlock Text="OUTGOING" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Name="TxtOutTotal" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#39E0CC"/>
+                    <TextBlock Name="TxtOutHits" Text="0 hits" Foreground="#8FDCD9" FontSize="11"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Background="#61071F31" BorderBrush="#FF8B7A" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                  <StackPanel>
+                    <TextBlock Text="INCOMING" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Name="TxtInTotal" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#FF8B7A"/>
+                    <TextBlock Name="TxtInHits" Text="0 hits" Foreground="#E7B2AA" FontSize="11"/>
                   </StackPanel>
                 </Border>
               </Grid>
-            </DockPanel>
+
+              <Grid Grid.Row="3">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="LIVE HITS" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
+                <Border Grid.Row="1" Background="#9A0B263A" BorderBrush="#56839C" BorderThickness="1" CornerRadius="10,10,0,0" Padding="10,8">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="78"/>
+                      <ColumnDefinition Width="52"/>
+                      <ColumnDefinition Width="90"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="TIME" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Grid.Column="1" Text="DIR" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Grid.Column="2" Text="AMOUNT" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="3" Text="WHO" Style="{StaticResource MetricLabel}" Margin="12,0,0,0"/>
+                  </Grid>
+                </Border>
+                <Border Grid.Row="2" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1,0,1,1" CornerRadius="0,0,12,12">
+                  <Grid>
+                    <ListBox Name="ListDamage" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                      <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                          <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                          <Setter Property="Padding" Value="0"/>
+                          <Setter Property="Focusable" Value="False"/>
+                          <Setter Property="Template">
+                            <Setter.Value>
+                              <ControlTemplate TargetType="ListBoxItem">
+                                <Border Background="#360B2638" BorderBrush="#2C4D62" BorderThickness="0,0,0,1" Padding="10,7">
+                                  <ContentPresenter/>
+                                </Border>
+                              </ControlTemplate>
+                            </Setter.Value>
+                          </Setter>
+                        </Style>
+                      </ListBox.ItemContainerStyle>
+                      <ListBox.ItemTemplate>
+                        <DataTemplate>
+                          <Grid MinHeight="28">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="78"/>
+                              <ColumnDefinition Width="52"/>
+                              <ColumnDefinition Width="90"/>
+                              <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding TimeDisplay}" VerticalAlignment="Center" Foreground="#8FB4C6" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="{Binding DirectionDisplay}" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12">
+                              <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                  <Setter Property="Foreground" Value="#FF8B7A"/>
+                                  <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Outgoing}" Value="True">
+                                      <Setter Property="Foreground" Value="#39E0CC"/>
+                                    </DataTrigger>
+                                  </Style.Triggers>
+                                </Style>
+                              </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Grid.Column="2" Text="{Binding AmountDisplay}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#F0F8FF"/>
+                            <StackPanel Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Who}" FontWeight="SemiBold" Foreground="#F0F8FF"
+                                         TextTrimming="CharacterEllipsis"/>
+                              <TextBlock Text="{Binding Detail}" FontSize="10" Foreground="#66879D"
+                                         TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Name="TxtNoDamage" Text="No new hits yet. Lines already on screen when tracking starts are ignored."
+                               Foreground="#7899AD" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                               Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               IsHitTestVisible="False"/>
+                  </Grid>
+                </Border>
+              </Grid>
+            </Grid>
           </Border>
         </Grid>
       </Grid>

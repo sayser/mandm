@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private TimerOverlayWindow? _timerOverlay;
     private MouseHighlightOverlayWindow? _mouseHighlight;
     private bool _mouseHighlightSuspended;
+    private bool _damageRegionSync;
 
     public MainWindow()
     {
@@ -24,7 +25,10 @@ public partial class MainWindow : Window
         ListActive.ItemsSource = App.State.Tracker.ActiveBuffs;
         ListTimers.ItemsSource = App.State.UserTimers.Timers;
         ListRegionOcr.ItemsSource = App.State.Monitor.RegionSnapshots;
+        ListDamage.ItemsSource = App.State.Damage.Hits;
         RefreshBuffList();
+        RefreshDamageRegionList();
+        RefreshDamageTotals();
         UpdateOverlayButton();
         UpdateTimerOverlayButton();
         UpdateActiveEmptyState();
@@ -48,6 +52,8 @@ public partial class MainWindow : Window
                 UpdateActiveEmptyState();
                 RefreshStatusPills();
             });
+        App.State.Damage.Changed += () => Dispatcher.Invoke(RefreshDamageTotals);
+        App.State.Damage.Hits.CollectionChanged += (_, _) => Dispatcher.Invoke(RefreshDamageTotals);
 
         TxtStatus.Text = App.State.Ocr.IsAvailable
             ? App.State.Monitor.Status
@@ -284,6 +290,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true)
             ApplyMouseHighlight();
         RefreshBuffList();
+        RefreshDamageRegionList();
         TxtStatus.Text = App.State.Monitor.Status;
         RefreshStatusPills();
     }
@@ -398,6 +405,69 @@ public partial class MainWindow : Window
         TimerFromSender(sender)?.Reset();
         ListTimers.Items.Refresh();
     }
+
+    private void RefreshDamageRegionList()
+    {
+        if (CmbDamageRegion is null) return;
+        _damageRegionSync = true;
+        try
+        {
+            var regions = App.State.Settings.CaptureRegions.ToList();
+            CmbDamageRegion.ItemsSource = regions;
+            var id = App.State.Settings.DamageRegionId ?? string.Empty;
+            CmbDamageRegion.SelectedItem = regions.FirstOrDefault(r =>
+                string.Equals(r.Id, id, StringComparison.Ordinal));
+        }
+        finally
+        {
+            _damageRegionSync = false;
+        }
+
+        UpdateDamageHint();
+    }
+
+    private void DamageRegion_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_damageRegionSync || CmbDamageRegion is null) return;
+        var selected = CmbDamageRegion.SelectedItem as NamedCaptureRegion;
+        var id = selected?.Id ?? string.Empty;
+        if (string.Equals(App.State.Settings.DamageRegionId ?? string.Empty, id, StringComparison.Ordinal))
+            return;
+
+        App.State.Settings.DamageRegionId = id;
+        App.State.SaveSettings();
+        UpdateDamageHint();
+    }
+
+    private void UpdateDamageHint()
+    {
+        if (TxtDamageHint is null) return;
+        var selected = CmbDamageRegion.SelectedItem as NamedCaptureRegion;
+        if (selected is null)
+        {
+            TxtDamageHint.Text =
+                "Pick the named capture region for the window that shows your hits and hits on you. Lines already on screen are ignored until the text changes.";
+            return;
+        }
+
+        TxtDamageHint.Text = selected.IsValid
+            ? $"Reading “{selected.Name}”. Only new lines after this selection count — damage you deal, and damage to you."
+            : $"“{selected.Name}” has no rectangle yet. Set it in Options, then choose it here.";
+    }
+
+    private void RefreshDamageTotals()
+    {
+        if (TxtOutTotal is null) return;
+        var damage = App.State.Damage;
+        TxtOutTotal.Text = damage.OutgoingTotal.ToString("N0");
+        TxtInTotal.Text = damage.IncomingTotal.ToString("N0");
+        TxtOutHits.Text = damage.OutgoingHits == 1 ? "1 hit" : $"{damage.OutgoingHits} hits";
+        TxtInHits.Text = damage.IncomingHits == 1 ? "1 hit" : $"{damage.IncomingHits} hits";
+        TxtNoDamage.Visibility = damage.Hits.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ResetDamage_Click(object sender, RoutedEventArgs e) =>
+        App.State.Damage.ClearTotals();
 
     private async void Updates_Click(object sender, RoutedEventArgs e)
     {

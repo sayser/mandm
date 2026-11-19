@@ -13,6 +13,7 @@ public sealed class AppState : IDisposable
     public AppSettings Settings { get; private set; }
     public BuffTrackerService Tracker { get; }
     public UserTimerService UserTimers { get; }
+    public DamageTrackerService Damage { get; }
     public CaptureMonitorService Monitor { get; }
 
     public AppState()
@@ -21,7 +22,8 @@ public sealed class AppState : IDisposable
         Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker = new BuffTrackerService(Settings, Alarms);
         UserTimers = new UserTimerService(Settings, Alarms);
-        Monitor = new CaptureMonitorService(Settings, Ocr, Tracker);
+        Damage = new DamageTrackerService(Settings);
+        Monitor = new CaptureMonitorService(Settings, Ocr, Tracker, Damage);
     }
 
     public void SaveSettings()
@@ -30,6 +32,7 @@ public sealed class AppState : IDisposable
         Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker.UpdateSettings(Settings);
         UserTimers.UpdateSettings(Settings);
+        Damage.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);
     }
 
@@ -39,6 +42,7 @@ public sealed class AppState : IDisposable
         Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker.UpdateSettings(Settings);
         UserTimers.UpdateSettings(Settings);
+        Damage.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);
     }
 

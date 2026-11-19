@@ -9,6 +9,10 @@ public sealed class AppSettings
     public CaptureRegion? CombatTextRegion { get; set; }
 
     public List<NamedCaptureRegion> CaptureRegions { get; set; } = [];
+
+    /// <summary>Named capture region whose new lines are parsed as personal damage. Empty until the user picks one.</summary>
+    public string DamageRegionId { get; set; } = string.Empty;
+
     public List<BuffDefinition> Buffs { get; set; } = [];
     public List<UserTimerDefinition> UserTimers { get; set; } = [];
 

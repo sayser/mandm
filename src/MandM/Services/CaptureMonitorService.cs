@@ -13,6 +13,7 @@ public sealed class CaptureMonitorService : IDisposable
     private readonly ScreenCaptureService _capture = new();
     private readonly OcrService _ocr;
     private readonly BuffTrackerService _tracker;
+    private readonly DamageTrackerService _damage;
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings;
@@ -31,11 +32,16 @@ public sealed class CaptureMonitorService : IDisposable
     public event Action<string>? CombatPreviewChanged;
     public event Action<string>? AbilitiesPreviewChanged;
 
-    public CaptureMonitorService(AppSettings settings, OcrService ocr, BuffTrackerService tracker)
+    public CaptureMonitorService(
+        AppSettings settings,
+        OcrService ocr,
+        BuffTrackerService tracker,
+        DamageTrackerService damage)
     {
         _settings = settings;
         _ocr = ocr;
         _tracker = tracker;
+        _damage = damage;
         SyncRegionSnapshots();
     }
 
@@ -73,6 +79,7 @@ public sealed class CaptureMonitorService : IDisposable
             slot.ResetHash();
         _idleStreak = 0;
         _tracker.InvalidateMatchBaseline();
+        _damage.InvalidateMatchBaseline();
     }
 
     private bool ConsumeBaselineRequest()
@@ -149,6 +156,7 @@ public sealed class CaptureMonitorService : IDisposable
                     ocrThisPass++;
                     _totalOcr++;
                     _tracker.ProcessRegionLines(named.Id, lines);
+                    _damage.ProcessRegionLines(named.Id, lines);
                     PublishPreview(named, settings, lines, slot);
                 }
 
@@ -185,6 +193,7 @@ public sealed class CaptureMonitorService : IDisposable
     {
         SetStatus("Capturing OCR baseline (ignoring on-screen text)…");
         _tracker.InvalidateMatchBaseline();
+        _damage.InvalidateMatchBaseline();
 
         foreach (var named in regions)
         {
@@ -199,6 +208,7 @@ public sealed class CaptureMonitorService : IDisposable
 
             var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
             _tracker.PrimeRegionBaseline(named.Id, lines);
+            _damage.PrimeRegionBaseline(named.Id, lines);
             PublishPreview(named, settings, lines, slot);
         }
 
@@ -206,7 +216,10 @@ public sealed class CaptureMonitorService : IDisposable
         lock (_baselineGate)
             anotherPending = _needsBaseline;
         if (!anotherPending)
+        {
             _tracker.MarkBaselineReady();
+            _damage.MarkBaselineReady();
+        }
     }
 
     /// <summary>All named regions with a valid rectangle — feeds buffs and the OCR tab.</summary>
