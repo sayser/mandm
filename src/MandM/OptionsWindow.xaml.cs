@@ -22,6 +22,8 @@ public partial class OptionsWindow : Window
 
     private readonly ObservableCollection<NamedCaptureRegion> _regions = [];
     private bool _suppressUi;
+    private bool _suppressVoiceUi;
+    private VoiceSettings _voiceDraft = new();
 
     public OptionsWindow()
     {
@@ -36,15 +38,22 @@ public partial class OptionsWindow : Window
         TxtInterval.Text = s.OcrIntervalMs.ToString();
         TxtSettingsPath.Text = App.State.SettingsService.SettingsPath;
 
-        var voices = WindowsTts.ListVoices();
-        CmbVoice.ItemsSource = voices;
-        var voiceId = s.Voice?.WindowsVoiceId ?? string.Empty;
-        CmbVoice.SelectedItem = voices.FirstOrDefault(v =>
-                                    string.Equals(v.Id, voiceId, StringComparison.OrdinalIgnoreCase))
-                                ?? voices.FirstOrDefault();
-        SldVoiceVolume.Value = Math.Clamp(s.Voice?.VolumePercent is > 0 and var vol ? vol : 100, 0, 100);
+        _voiceDraft = (s.Voice ?? new VoiceSettings()).Clone();
+        CmbVoiceEngine.ItemsSource = new[]
+        {
+            new { Kind = VoiceEngineKind.Natural, Label = NaturalEngineLabel() },
+            new { Kind = VoiceEngineKind.Windows, Label = "Windows Voice (built-in)" }
+        };
+        CmbVoiceEngine.DisplayMemberPath = "Label";
+        CmbVoiceEngine.SelectedValuePath = "Kind";
+        _suppressVoiceUi = true;
+        CmbVoiceEngine.SelectedValue = _voiceDraft.Engine;
+        _suppressVoiceUi = false;
+        ReloadVoiceList();
+        SldVoiceVolume.Value = Math.Clamp(_voiceDraft.VolumePercent <= 0 ? 100 : _voiceDraft.VolumePercent, 0, 100);
         SldVoiceVolume.ValueChanged += VoiceVolume_Changed;
         RefreshVoiceVolumeLabel();
+        RefreshVoiceDownloadUi();
 
         SldDiameter.ValueChanged += Slider_ValueChanged;
         SldThickness.ValueChanged += Slider_ValueChanged;
@@ -178,19 +187,134 @@ public partial class OptionsWindow : Window
         TxtVoiceVolume.Text = $"{SldVoiceVolume.Value:0}%";
     }
 
+    private void VoiceEngine_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressVoiceUi) return;
+        // Remember the voice that was selected for the previous engine.
+        if (CmbVoice.SelectedItem is VoiceOption previous
+            && e.RemovedItems.Count > 0
+            && e.RemovedItems[0] is not null)
+        {
+            var leaving = e.RemovedItems[0];
+            var leavingKind = leaving.GetType().GetProperty("Kind")?.GetValue(leaving);
+            if (leavingKind is VoiceEngineKind.Natural)
+                _voiceDraft.NaturalVoiceId = string.IsNullOrWhiteSpace(previous.Id) ? "af_heart" : previous.Id;
+            else if (leavingKind is VoiceEngineKind.Windows)
+                _voiceDraft.WindowsVoiceId = previous.Id;
+        }
+
+        ReloadVoiceList();
+        RefreshVoiceDownloadUi();
+    }
+
+    private VoiceEngineKind SelectedVoiceEngine() =>
+        CmbVoiceEngine.SelectedValue is VoiceEngineKind kind ? kind : VoiceEngineKind.Natural;
+
+    private void ReloadVoiceList()
+    {
+        var engine = SelectedVoiceEngine();
+        var options = engine == VoiceEngineKind.Natural
+            ? NaturalTts.Voices
+            : WindowsTts.ListVoices();
+        var keepId = engine == VoiceEngineKind.Natural
+            ? _voiceDraft.NaturalVoiceId
+            : _voiceDraft.WindowsVoiceId;
+
+        CmbVoice.ItemsSource = options;
+        CmbVoice.SelectedItem = options.FirstOrDefault(v =>
+                                    string.Equals(v.Id, keepId, StringComparison.OrdinalIgnoreCase))
+                                ?? options.FirstOrDefault();
+    }
+
+    private void RefreshVoiceDownloadUi()
+    {
+        if (BtnDownloadVoice is null || TxtVoiceStatus is null) return;
+        var natural = SelectedVoiceEngine() == VoiceEngineKind.Natural;
+        BtnDownloadVoice.Visibility = natural ? Visibility.Visible : Visibility.Collapsed;
+        BtnDownloadVoice.Content = NaturalTts.IsDownloaded
+            ? "Re-download natural voice pack"
+            : "Download natural voice pack (~320 MB)";
+        TxtVoiceStatus.Text = natural
+            ? (NaturalTts.IsDownloaded
+                ? $"Natural pack ready — {NaturalTts.NamedVoiceCount} Kokoro speakers (same list as EQDM)."
+                : "Download the Kokoro natural voice pack once (~320 MB) before spoken alerts can use it.")
+            : "Windows SAPI voices — robotic fallback if Natural is not downloaded.";
+    }
+
+    private static string NaturalEngineLabel() =>
+        NaturalTts.IsDownloaded
+            ? "Natural Voice (Kokoro — EQDM)"
+            : "Natural Voice (Kokoro — download required)";
+
+    private async void DownloadVoice_Click(object sender, RoutedEventArgs e)
+    {
+        BtnDownloadVoice.IsEnabled = false;
+        TxtVoiceStatus.Text = "Downloading natural voice pack (~320 MB). This can take a few minutes…";
+        try
+        {
+            var error = await NaturalTts.DownloadAsync(percent =>
+            {
+                var shown = Math.Clamp((int)(percent * 100), 0, 100);
+                Dispatcher.BeginInvoke(() =>
+                    TxtVoiceStatus.Text = $"Downloading natural voice pack… {shown}%");
+            });
+            // Refresh engine label.
+            var selected = SelectedVoiceEngine();
+            CmbVoiceEngine.ItemsSource = new[]
+            {
+                new { Kind = VoiceEngineKind.Natural, Label = NaturalEngineLabel() },
+                new { Kind = VoiceEngineKind.Windows, Label = "Windows Voice (built-in)" }
+            };
+            _suppressVoiceUi = true;
+            CmbVoiceEngine.SelectedValue = selected;
+            _suppressVoiceUi = false;
+            RefreshVoiceDownloadUi();
+            TxtVoiceStatus.Text = string.IsNullOrWhiteSpace(error)
+                ? "Natural voice pack is ready."
+                : error;
+        }
+        catch (Exception ex)
+        {
+            TxtVoiceStatus.Text = "Download failed: " + ex.Message;
+        }
+        finally
+        {
+            BtnDownloadVoice.IsEnabled = true;
+        }
+    }
+
     private void PreviewVoice_Click(object sender, RoutedEventArgs e)
     {
+        if (SelectedVoiceEngine() == VoiceEngineKind.Natural && !NaturalTts.IsDownloaded)
+        {
+            MessageBox.Show(this,
+                "Download the natural voice pack first (same Kokoro engine EQDM uses).",
+                "MandM", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         var previous = App.State.Alarms.CurrentVoiceSettings;
         App.State.Alarms.UpdateVoiceSettings(ReadVoiceSettings());
         App.State.Alarms.PreviewVoice();
         App.State.Alarms.UpdateVoiceSettings(previous);
     }
 
-    private VoiceSettings ReadVoiceSettings() => new()
+    private VoiceSettings ReadVoiceSettings()
     {
-        WindowsVoiceId = (CmbVoice.SelectedItem as VoiceOption)?.Id ?? string.Empty,
-        VolumePercent = (int)Math.Round(SldVoiceVolume.Value)
-    };
+        var engine = SelectedVoiceEngine();
+        var selectedId = (CmbVoice.SelectedItem as VoiceOption)?.Id ?? string.Empty;
+        return new VoiceSettings
+        {
+            Engine = engine,
+            NaturalVoiceId = engine == VoiceEngineKind.Natural
+                ? (string.IsNullOrWhiteSpace(selectedId) ? "af_heart" : selectedId)
+                : _voiceDraft.NaturalVoiceId,
+            WindowsVoiceId = engine == VoiceEngineKind.Windows
+                ? selectedId
+                : _voiceDraft.WindowsVoiceId,
+            VolumePercent = (int)Math.Round(SldVoiceVolume.Value)
+        };
+    }
 
     private void AddRegion_Click(object sender, RoutedEventArgs e)
     {

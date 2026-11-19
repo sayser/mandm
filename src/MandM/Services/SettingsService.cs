@@ -83,6 +83,11 @@ public sealed class SettingsService
         settings.MouseHighlight ??= new MouseHighlightSettings();
         settings.Voice ??= new VoiceSettings();
         settings.Voice.WindowsVoiceId ??= string.Empty;
+        settings.Voice.NaturalVoiceId = string.IsNullOrWhiteSpace(settings.Voice.NaturalVoiceId)
+            ? "af_heart"
+            : settings.Voice.NaturalVoiceId.Trim();
+        if (settings.Voice.Engine is not VoiceEngineKind.Windows and not VoiceEngineKind.Natural)
+            settings.Voice.Engine = VoiceEngineKind.Natural;
         settings.Voice.VolumePercent = Math.Clamp(
             settings.Voice.VolumePercent <= 0 ? 100 : settings.Voice.VolumePercent, 0, 100);
 

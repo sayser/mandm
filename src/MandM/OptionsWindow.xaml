@@ -82,17 +82,22 @@
             </StackPanel>
           </Border>
 
-          <!-- Spoken alerts (EQDM-style Windows voice) -->
+          <!-- Spoken alerts (EQDM Kokoro natural voices) -->
           <Border Style="{StaticResource GlassCard}" Padding="18,16" Margin="0,0,0,12">
             <StackPanel>
               <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                 <TextBlock Text="🔊" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
                 <StackPanel>
                   <TextBlock Text="SPOKEN ALERTS" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                  <TextBlock Text="Windows natural voice for buff warn/fade and timer alarms (EQDM-style)"
+                  <TextBlock Text="EQDM natural human voices (Kokoro) — same engine and speaker list"
                              Foreground="#66879D" FontSize="10"/>
                 </StackPanel>
               </StackPanel>
+
+              <TextBlock Text="VOICE ENGINE" Style="{StaticResource DialogLabel}"/>
+              <ComboBox Name="CmbVoiceEngine" Margin="0,0,0,10"
+                        SelectionChanged="VoiceEngine_Changed"
+                        Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"/>
 
               <TextBlock Text="VOICE" Style="{StaticResource DialogLabel}"/>
               <ComboBox Name="CmbVoice" Margin="0,0,0,10"
@@ -106,9 +111,13 @@
               <Slider Name="SldVoiceVolume" Minimum="0" Maximum="100" TickFrequency="5"
                       IsSnapToTickEnabled="True" Margin="0,0,0,10"/>
 
-              <StackPanel Orientation="Horizontal">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <Button Name="BtnDownloadVoice" Content="Download natural voice pack (~320 MB)"
+                        MinWidth="220" Padding="12,7" Margin="0,0,8,0" Click="DownloadVoice_Click"/>
                 <Button Content="Preview voice" MinWidth="120" Padding="12,7" Click="PreviewVoice_Click"/>
               </StackPanel>
+              <TextBlock Name="TxtVoiceStatus" Foreground="#66879D" FontSize="10" TextWrapping="Wrap"
+                         Text="Natural voice uses Kokoro (same as EQDM). Download once, then pick a speaker."/>
               <TextBlock Text="Per buff/timer: set Alert Output to Voice and enter custom spoken text."
                          Foreground="#66879D" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>

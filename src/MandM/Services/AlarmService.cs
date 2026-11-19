@@ -20,8 +20,11 @@ public sealed class AlarmService
         "Question"
     ];
 
-    public void UpdateVoiceSettings(VoiceSettings settings) =>
+    public void UpdateVoiceSettings(VoiceSettings settings)
+    {
         _voice = settings?.Clone() ?? new VoiceSettings();
+        SpeechPlayback.Settings = _voice.Clone();
+    }
 
     public VoiceSettings CurrentVoiceSettings => _voice.Clone();
 
@@ -44,9 +47,20 @@ public sealed class AlarmService
                     var spoken = string.IsNullOrWhiteSpace(voiceText)
                         ? defaultPhrase
                         : voiceText.Trim();
-                    if (WindowsTts.Speak(spoken, _voice.WindowsVoiceId, volume))
+                    SpeechPlayback.Settings = _voice.Clone();
+                    if (SpeechPlayback.Speak(spoken, volume))
                         return;
-                    // Fall back to sound if SAPI is unavailable.
+                    // Fall back: try the other engine, then sound.
+                    if (_voice.Engine == VoiceEngineKind.Natural)
+                    {
+                        if (WindowsTts.Speak(spoken, _voice.WindowsVoiceId, volume))
+                            return;
+                    }
+                    else if (NaturalTts.IsDownloaded
+                             && NaturalTts.Speak(spoken, _voice.NaturalVoiceId, volume))
+                    {
+                        return;
+                    }
                 }
 
                 PlaySoundCore(soundIdOrPath);
@@ -60,13 +74,18 @@ public sealed class AlarmService
 
     public void PreviewVoice(string? sampleText = null)
     {
-        var label = string.IsNullOrWhiteSpace(_voice.WindowsVoiceId)
-            ? "the default Windows voice"
-            : _voice.WindowsVoiceId;
-        var text = string.IsNullOrWhiteSpace(sampleText)
-            ? $"This is {label}."
-            : sampleText.Trim();
-        PlayAlert(AlertMode.Voice, "Exclamation", text, text);
+        SpeechPlayback.Settings = _voice.Clone();
+        if (!string.IsNullOrWhiteSpace(sampleText))
+        {
+            PlayAlert(AlertMode.Voice, "Exclamation", sampleText, sampleText);
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            if (!SpeechPlayback.Preview())
+                PlaySoundCore("Exclamation");
+        });
     }
 
     private void PlaySoundCore(string? soundIdOrPath)
@@ -81,7 +100,6 @@ public sealed class AlarmService
         {
             try
             {
-                // MediaPlayer must be touched on an STA thread; use SoundPlayer for wav on worker.
                 using var player = new SoundPlayer(soundIdOrPath);
                 player.PlaySync();
                 return;
