@@ -98,36 +98,17 @@ public sealed class DamageTrackerService
         if (!IsSelected(regionId))
             return;
 
+        var visible = lines as IReadOnlyList<string> ?? lines.ToList();
         List<string> fresh;
         lock (_gate)
-            fresh = _buffer.Observe(lines);
+            fresh = _buffer.Observe(visible);
         if (fresh.Count == 0)
-            return;
-
-        var actions = new List<Action<DateTime>>();
-        foreach (var line in fresh)
-        {
-            if (DamageLineParser.TryParseSlain(line, out var target))
-            {
-                var slain = target;
-                actions.Add(when => _fight.OnSlain(slain, when));
-                continue;
-            }
-
-            if (!DamageLineParser.TryParse(line, out var parsed))
-                continue;
-            var hit = parsed;
-            actions.Add(when => _fight.OnDamage(hit, when));
-        }
-
-        if (actions.Count == 0)
             return;
 
         void Apply()
         {
-            var when = DateTime.Now;
-            foreach (var action in actions)
-                action(when);
+            if (!_fight.ApplyFrame(fresh, visible, DateTime.Now))
+                return;
             PublishAbilities();
             SyncClock();
             Changed?.Invoke();

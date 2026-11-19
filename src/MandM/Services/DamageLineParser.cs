@@ -44,16 +44,54 @@ public static class DamageLineParser
     public static string Collapse(string? raw) =>
         string.IsNullOrWhiteSpace(raw) ? string.Empty : Whitespace.Replace(raw.Trim(), " ");
 
+    /// <summary>Letters, digits, and single spaces. Timestamps and punctuation are removed.</summary>
+    public static string Canonical(string? raw)
+    {
+        var message = StripTimestamp(Collapse(raw)).ToLowerInvariant();
+        var chars = new System.Text.StringBuilder(message.Length);
+        var pendingSpace = false;
+        foreach (var ch in message)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                if (pendingSpace && chars.Length > 0)
+                    chars.Append(' ');
+                chars.Append(ch);
+                pendingSpace = false;
+            }
+            else
+            {
+                pendingSpace = true;
+            }
+        }
+
+        return chars.ToString();
+    }
+
+    /// <summary>Player slain text, including a missing "have" from a bad OCR read.</summary>
+    public static bool IsSlainLine(string? raw)
+    {
+        var text = Canonical(raw);
+        return Regex.IsMatch(text, @"\byou have slain\b")
+               || Regex.IsMatch(text, @"\byou slain\b");
+    }
+
     /// <summary>"You have slain a crystal dervish!" ends the current fight. Not damage.</summary>
     public static bool TryParseSlain(string? raw, out string target)
     {
         target = string.Empty;
+        if (!IsSlainLine(raw))
+            return false;
         var message = StripTimestamp(Collapse(raw));
         if (message.Length == 0)
             return false;
         var match = Slain.Match(message);
         if (!match.Success)
-            return false;
+        {
+            target = Canonical(raw);
+            return target.Length > 0;
+        }
+
         target = Clean(match.Groups["target"].Value);
         return target.Length > 0;
     }
@@ -61,6 +99,8 @@ public static class DamageLineParser
     public static bool TryParse(string? raw, out ParsedDamage parsed)
     {
         parsed = default;
+        if (IsSlainLine(raw))
+            return false;
         var message = StripTimestamp(Collapse(raw));
         if (message.Length == 0)
             return false;

@@ -132,6 +132,34 @@ Check("next hit starts a new fight", fight.Tracking && fight.DamageDealt == 0 &&
 fight.OnDamage(slash, t0.AddSeconds(41));
 Check("new fight counts only new damage", fight.DamageDealt == 16 && fight.Abilities[0].Name == "Slash");
 
+var screen = new DamageFight();
+var kill = "You slash a crystal dervish for 40 points of damage.";
+var slainText = "You have slain a crystal dervish!";
+screen.ApplyFrame([kill], [kill], t0);
+Check("fight is open before the slain line", screen.Tracking && screen.DamageDealt == 40);
+screen.ApplyFrame([slainText], [slainText, kill], t0.AddSeconds(3));
+Check("slain line stops the fight",
+    !screen.Tracking && screen.HasFight && screen.SlainTarget == "a crystal dervish" && screen.DamageDealt == 40);
+screen.ApplyFrame(
+    ["You have slain a crystal dervish", "You slash a crystal dervish for 40 points of damage"],
+    ["You have slain a crystal dervish", kill],
+    t0.AddSeconds(4));
+Check("leftover slain OCR does not open a fight", !screen.Tracking && screen.DamageDealt == 40);
+var together = new DamageFight();
+together.ApplyFrame([slainText, kill], [slainText, kill], t0);
+Check("slain before the killing blow in one read does not stay open",
+    !together.Tracking && together.DamageDealt == 40);
+screen.ApplyFrame(
+    ["You have slaln a crystal dervish!"],
+    ["You have slaln a crystal dervish!"],
+    t0.AddSeconds(5));
+Check("near slain OCR does not open a fight", !screen.Tracking && screen.DamageDealt == 40);
+screen.ApplyFrame(
+    ["A wolf hits YOU for 7 points of damage."],
+    ["You have slain a crystal dervish!", "A wolf hits YOU for 7 points of damage."],
+    t0.AddSeconds(8));
+Check("a later hit starts the next fight", screen.Tracking && screen.DamageDealt == 0);
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");
