@@ -1,47 +1,132 @@
+using System.Collections.ObjectModel;
+using System.Drawing;
+using System.Threading;
+using System.Windows;
+using System.Windows.Threading;
 using MandM.Models;
 
 namespace MandM.Services;
 
 /// <summary>
-/// Periodically OCR's Combat Text and Abilities capture regions.
+/// Periodically OCR's valid capture regions, skipping unchanged frames and reusing buffers.
 /// </summary>
 public sealed class CaptureMonitorService : IDisposable
 {
     private readonly ScreenCaptureService _capture = new();
     private readonly OcrService _ocr;
     private readonly BuffTrackerService _tracker;
+    private readonly DamageTrackerService _damage;
     private CancellationTokenSource? _cts;
-    private Task? _loop;
+    private Thread? _thread;
+    private Dispatcher? _captureDispatcher;
+    private volatile bool _stop;
     private AppSettings _settings;
+    private readonly object _baselineGate = new();
+    private bool _needsBaseline = true;
+    private readonly Dictionary<string, RegionSlot> _slots = new(StringComparer.Ordinal);
+    private string _lastStatus = string.Empty;
+    private long _totalCaptures;
+    private long _totalOcr;
+    private long _totalSkipped;
 
     public string Status { get; private set; } = "Idle";
+    public ObservableCollection<RegionOcrSnapshot> RegionSnapshots { get; } = [];
     public event Action<string>? StatusChanged;
     public event Action<string>? CombatPreviewChanged;
     public event Action<string>? AbilitiesPreviewChanged;
 
-    public CaptureMonitorService(AppSettings settings, OcrService ocr, BuffTrackerService tracker)
+    public CaptureMonitorService(
+        AppSettings settings,
+        OcrService ocr,
+        BuffTrackerService tracker,
+        DamageTrackerService damage)
     {
         _settings = settings;
         _ocr = ocr;
         _tracker = tracker;
+        _damage = damage;
+        SyncRegionSnapshots();
     }
 
-    public void UpdateSettings(AppSettings settings) => _settings = settings;
+    public void UpdateSettings(AppSettings settings)
+    {
+        _settings = settings;
+        SyncRegionSnapshots();
+        RequestBaseline();
+    }
 
     public void Start()
     {
         Stop();
+        SyncRegionSnapshots();
+        RequestBaseline();
+        _stop = false;
         _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => LoopAsync(_cts.Token));
+        var cts = _cts;
+        _thread = new Thread(() => RunCaptureThread(cts))
+        {
+            IsBackground = true,
+            Name = "MandM capture"
+        };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
     }
 
     public void Stop()
     {
+        _stop = true;
         try { _cts?.Cancel(); } catch { /* ignore */ }
+        var dispatcher = _captureDispatcher;
+        if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+        {
+            try { dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal); } catch { /* ignore */ }
+        }
+
+        _thread?.Join(TimeSpan.FromSeconds(2));
         _cts?.Dispose();
         _cts = null;
-        _loop = null;
+        _thread = null;
+        _captureDispatcher = null;
+        DisposeSlots();
         SetStatus("Stopped");
+    }
+
+    private void RunCaptureThread(CancellationTokenSource cts)
+    {
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        _captureDispatcher = dispatcher;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+        if (_stop)
+        {
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+        }
+        else
+        {
+            dispatcher.BeginInvoke(new Action(() => _ = LoopAsync(cts.Token)));
+        }
+
+        Dispatcher.Run();
+    }
+
+    private void RequestBaseline()
+    {
+        lock (_baselineGate)
+            _needsBaseline = true;
+        foreach (var slot in _slots.Values)
+            slot.ResetHash();
+        _tracker.InvalidateMatchBaseline();
+        _damage.InvalidateMatchBaseline();
+    }
+
+    private bool ConsumeBaselineRequest()
+    {
+        lock (_baselineGate)
+        {
+            if (!_needsBaseline)
+                return false;
+            _needsBaseline = false;
+            return true;
+        }
     }
 
     private async Task LoopAsync(CancellationToken ct)
@@ -58,42 +143,69 @@ public sealed class CaptureMonitorService : IDisposable
             try
             {
                 var settings = _settings;
-                var interval = Math.Clamp(settings.OcrIntervalMs, 250, 5000);
+                var interval = Math.Clamp(settings.OcrIntervalMs, 400, 5000);
+                var live = GetLiveRegions(settings);
 
-                if (settings.CombatTextRegion.IsValid)
+                if (live.Count == 0)
                 {
-                    using var bmp = _capture.Capture(settings.CombatTextRegion);
-                    if (bmp is not null)
-                    {
-                        var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
-                        CombatPreviewChanged?.Invoke(string.Join(Environment.NewLine, lines));
-                        _tracker.ProcessCombatLines(lines);
-                    }
+                    // No valid/referenced regions — don't wake capture or OCR.
+                    SetStatus("Set capture regions in Options");
+                    await Task.Delay(Math.Max(interval, 1500), ct);
+                    continue;
                 }
 
-                if (settings.AbilitiesRegion.IsValid)
+                if (ConsumeBaselineRequest())
                 {
-                    using var bmp = _capture.Capture(settings.AbilitiesRegion);
-                    if (bmp is not null)
-                    {
-                        var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
-                        // Ability bar: each slot tends to be one OCR line with the spell name.
-                        var cleaned = lines
-                            .Select(CleanAbilityLine)
-                            .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .Cast<string>()
-                            .ToList();
-                        AbilitiesPreviewChanged?.Invoke(string.Join(Environment.NewLine, cleaned));
-                        _tracker.SetLoadedAbilities(cleaned);
-                    }
+                    await CaptureBaselineAsync(settings, live, ct);
+                    SetStatus($"Baseline captured — monitoring {live.Count} live region(s)");
+                    await Task.Delay(interval, ct);
+                    continue;
                 }
 
-                var regionsOk = settings.CombatTextRegion.IsValid || settings.AbilitiesRegion.IsValid;
-                SetStatus(regionsOk
-                    ? $"Monitoring (every {interval} ms)"
-                    : "Set capture regions in Options");
+                var ocrThisPass = 0;
+                var skippedThisPass = 0;
+                var capturedThisPass = 0;
 
-                await Task.Delay(interval, ct);
+                foreach (var named in live)
+                {
+                    var slot = GetOrCreateSlot(named.Id);
+                    var bmp = _capture.CaptureInto(named.Region, slot.Bitmap);
+                    if (bmp is null)
+                        continue;
+
+                    slot.Bitmap = bmp;
+                    capturedThisPass++;
+                    _totalCaptures++;
+
+                    var hash = ScreenCaptureService.ComputeContentHash(bmp);
+                    if (slot.HasHash && slot.LastHash == hash)
+                    {
+                        skippedThisPass++;
+                        _totalSkipped++;
+                        continue;
+                    }
+
+                    slot.LastHash = hash;
+                    slot.HasHash = true;
+
+                    var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
+                    ocrThisPass++;
+                    _totalOcr++;
+                    _tracker.ProcessRegionLines(named.Id, lines);
+                    _damage.ProcessRegionLines(named.Id, lines);
+                    PublishPreview(named, settings, lines, slot);
+                }
+
+                var idle = ocrThisPass == 0 && (skippedThisPass > 0 || capturedThisPass == 0);
+                // Unchanged frames skip OCR and wait longer. A changed frame uses the
+                // user's interval. Never spin.
+                var delay = idle
+                    ? Math.Clamp(interval * 3, 1500, 4000)
+                    : Math.Clamp(interval, 500, 5000);
+
+                SetStatus("Live");
+
+                await Task.Delay(delay, ct);
             }
             catch (OperationCanceledException)
             {
@@ -107,12 +219,159 @@ public sealed class CaptureMonitorService : IDisposable
         }
     }
 
+    private async Task CaptureBaselineAsync(
+        AppSettings settings,
+        List<NamedCaptureRegion> regions,
+        CancellationToken ct)
+    {
+        SetStatus("Capturing OCR baseline (ignoring on-screen text)…");
+        _tracker.InvalidateMatchBaseline();
+        _damage.InvalidateMatchBaseline();
+
+        foreach (var named in regions)
+        {
+            var slot = GetOrCreateSlot(named.Id);
+            var bmp = _capture.CaptureInto(named.Region, slot.Bitmap);
+            if (bmp is null)
+                continue;
+
+            slot.Bitmap = bmp;
+            slot.LastHash = ScreenCaptureService.ComputeContentHash(bmp);
+            slot.HasHash = true;
+
+            var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
+            _tracker.PrimeRegionBaseline(named.Id, lines);
+            _damage.PrimeRegionBaseline(named.Id, lines);
+            PublishPreview(named, settings, lines, slot);
+        }
+
+        bool anotherPending;
+        lock (_baselineGate)
+            anotherPending = _needsBaseline;
+        if (!anotherPending)
+        {
+            _tracker.MarkBaselineReady();
+            _damage.MarkBaselineReady();
+        }
+    }
+
+    /// <summary>All named regions with a valid rectangle — feeds buffs and the OCR tab.</summary>
+    private static List<NamedCaptureRegion> GetLiveRegions(AppSettings settings) =>
+        settings.CaptureRegions?.Where(r => r.IsValid).ToList() ?? [];
+
+    public void SyncRegionSnapshots()
+    {
+        void Apply()
+        {
+            var regions = _settings.CaptureRegions ?? [];
+            var keep = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var region in regions)
+            {
+                keep.Add(region.Id);
+                var snap = RegionSnapshots.FirstOrDefault(s => s.Id == region.Id);
+                if (snap is null)
+                {
+                    snap = new RegionOcrSnapshot { Id = region.Id };
+                    RegionSnapshots.Add(snap);
+                }
+
+                snap.Name = region.Name;
+                snap.BoundsDisplay = region.BoundsDisplay;
+                snap.IsValid = region.IsValid;
+                if (!region.IsValid)
+                    snap.Text = string.Empty;
+            }
+
+            for (var i = RegionSnapshots.Count - 1; i >= 0; i--)
+            {
+                if (!keep.Contains(RegionSnapshots[i].Id))
+                    RegionSnapshots.RemoveAt(i);
+            }
+        }
+
+        PostToUi(Apply);
+    }
+
+    private RegionSlot GetOrCreateSlot(string id)
+    {
+        if (_slots.TryGetValue(id, out var slot))
+            return slot;
+        slot = new RegionSlot();
+        _slots[id] = slot;
+        return slot;
+    }
+
+    private void PublishPreview(
+        NamedCaptureRegion named,
+        AppSettings settings,
+        IReadOnlyList<string> lines,
+        RegionSlot slot)
+    {
+        string text;
+        if (IsAbilitiesRegion(named))
+        {
+            var cleaned = new List<string>(lines.Count);
+            foreach (var line in lines)
+            {
+                var c = CleanAbilityLine(line);
+                if (!string.IsNullOrWhiteSpace(c))
+                    cleaned.Add(c);
+            }
+
+            text = string.Join(Environment.NewLine, cleaned);
+            if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
+            {
+                slot.LastPreview = text;
+                AbilitiesPreviewChanged?.Invoke(text);
+            }
+
+            _tracker.SetLoadedAbilities(cleaned);
+        }
+        else
+        {
+            text = string.Join(Environment.NewLine, lines);
+            if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
+            {
+                slot.LastPreview = text;
+                if (IsCombatPreviewRegion(named, settings))
+                    CombatPreviewChanged?.Invoke(text);
+            }
+        }
+
+        UpdateSnapshotText(named.Id, text);
+    }
+
+    private void UpdateSnapshotText(string regionId, string text)
+    {
+        void Apply()
+        {
+            var snap = RegionSnapshots.FirstOrDefault(s => s.Id == regionId);
+            if (snap is null) return;
+            snap.Text = text;
+        }
+
+        PostToUi(Apply);
+    }
+
+    private static void PostToUi(Action apply)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            apply();
+        else
+            dispatcher.BeginInvoke(apply);
+    }
+
+    private static bool IsAbilitiesRegion(NamedCaptureRegion named) =>
+        string.Equals(named.Name, "Abilities", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCombatPreviewRegion(NamedCaptureRegion named, AppSettings settings) =>
+        string.Equals(named.Name, "Combat Text", StringComparison.OrdinalIgnoreCase);
+
     private static string? CleanAbilityLine(string line)
     {
         var t = line.Trim();
-        // Drop solitary hotkey digits OCR sometimes picks up.
         if (t.Length <= 2 && t.All(char.IsDigit)) return null;
-        // Strip leading "1 " / "7 " style prefixes if present.
         if (t.Length > 2 && char.IsDigit(t[0]) && (t[1] == ' ' || t[1] == '.' || t[1] == ')'))
             t = t[2..].Trim();
         return t;
@@ -120,9 +379,40 @@ public sealed class CaptureMonitorService : IDisposable
 
     private void SetStatus(string status)
     {
+        if (string.Equals(status, _lastStatus, StringComparison.Ordinal))
+            return;
+        _lastStatus = status;
         Status = status;
         StatusChanged?.Invoke(status);
     }
 
+    private void DisposeSlots()
+    {
+        foreach (var slot in _slots.Values)
+            slot.Dispose();
+        _slots.Clear();
+    }
+
     public void Dispose() => Stop();
+
+    private sealed class RegionSlot : IDisposable
+    {
+        public Bitmap? Bitmap;
+        public ulong LastHash;
+        public bool HasHash;
+        public string LastPreview = string.Empty;
+
+        public void ResetHash()
+        {
+            HasHash = false;
+            LastHash = 0;
+            LastPreview = string.Empty;
+        }
+
+        public void Dispose()
+        {
+            Bitmap?.Dispose();
+            Bitmap = null;
+        }
+    }
 }

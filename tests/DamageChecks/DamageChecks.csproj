@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>MandM.DamageChecks</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\MandM\Services\DamageLineParser.cs" Link="DamageLineParser.cs" />
+    <Compile Include="..\..\src\MandM\Services\DamageLineBuffer.cs" Link="DamageLineBuffer.cs" />
+    <Compile Include="..\..\src\MandM\Services\DamageFight.cs" Link="DamageFight.cs" />
+  </ItemGroup>
+</Project>

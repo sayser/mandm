@@ -12,6 +12,36 @@
     <Product>MandM</Product>
     <Description>Self-buff tracker for Monsters &amp; Memories</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF single-file needs native libs extracted or HwndSubclass hits DllNotFoundException -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="KokoroSharp.CPU" Version="0.8.4" />
+  </ItemGroup>
+
+  <!-- KokoroSharp copies voices/espeak after Build, not Publish. Single-file needs them beside the exe. -->
+  <Target Name="CopyKokoroContentOnPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_KokoroVoices Include="$(OutputPath)voices\**\*" Condition="Exists('$(OutputPath)voices')" />
+      <_KokoroEspeak Include="$(OutputPath)espeak\**\*" Condition="Exists('$(OutputPath)espeak')" />
+      <_KokoroEspeakData Include="$(OutputPath)espeak-ng-data\**\*" Condition="Exists('$(OutputPath)espeak-ng-data')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_KokoroVoices)"
+          DestinationFiles="@(_KokoroVoices->'$(PublishDir)voices\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroVoices)' != ''" />
+    <Copy SourceFiles="@(_KokoroEspeak)"
+          DestinationFiles="@(_KokoroEspeak->'$(PublishDir)espeak\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroEspeak)' != ''" />
+    <Copy SourceFiles="@(_KokoroEspeakData)"
+          DestinationFiles="@(_KokoroEspeakData->'$(PublishDir)espeak-ng-data\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'@(_KokoroEspeakData)' != ''" />
+  </Target>
 
 </Project>

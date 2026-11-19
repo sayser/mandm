@@ -10,8 +10,16 @@ public sealed class BuffTrackerService : IDisposable
     private readonly AlarmService _alarms;
     private readonly DispatcherTimer _tick;
     private readonly object _gate = new();
-    private readonly HashSet<string> _recentLines = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>OCR line match counts from the previous poll (per buff id).</summary>
+    private Dictionary<string, int> _previousLandCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
+    private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
+    /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
+    private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
+    /// <summary>False until an OCR baseline pass finishes — blocks land/warn/fade/cast actions.</summary>
+    private bool _acceptMatchEvents;
 
     public ObservableCollection<ActiveBuff> ActiveBuffs { get; } = [];
     public ObservableCollection<string> LoadedAbilities { get; } = [];
@@ -26,45 +34,236 @@ public sealed class BuffTrackerService : IDisposable
         _tick.Start();
     }
 
-    public void UpdateSettings(AppSettings settings) => _settings = settings;
-
-    public void ProcessCombatLines(IEnumerable<string> lines)
+    public void UpdateSettings(AppSettings settings)
     {
-        foreach (var raw in lines)
-        {
-            var line = raw.Trim();
-            if (string.IsNullOrWhiteSpace(line)) continue;
+        _settings = settings;
+        InvalidateMatchBaseline();
+    }
 
-            // Deduplicate identical OCR lines briefly so we don't re-land every poll.
-            var key = TextMatch.Normalize(line);
-            lock (_gate)
-            {
-                if (!_recentLines.Add(key))
-                    continue;
-            }
-
-            foreach (var def in _settings.Buffs.Where(b => b.Enabled))
-            {
-                if (!string.IsNullOrWhiteSpace(def.FadeText) && TextMatch.ContainsLoose(line, def.FadeText))
-                {
-                    ClearBuff(def.Id);
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(def.LandText) && TextMatch.ContainsLoose(line, def.LandText))
-                {
-                    LandBuff(def);
-                }
-            }
-        }
-
-        // Cap recent-line memory
+    /// <summary>
+    /// Clear match counters so the next OCR pass must re-baseline.
+    /// Prevents mid-session settings saves from treating on-screen text as brand new.
+    /// </summary>
+    public void InvalidateMatchBaseline()
+    {
         lock (_gate)
         {
-            if (_recentLines.Count > 200)
-                _recentLines.Clear();
+            _acceptMatchEvents = false;
+            _previousLandCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousWarnCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _armedFromCast.Clear();
         }
     }
+
+    public void MarkBaselineReady()
+    {
+        lock (_gate)
+            _acceptMatchEvents = true;
+    }
+
+    /// <summary>
+    /// Snapshot current OCR for a region into match counters without starting/resetting/warning/fading.
+    /// Used at monitor start so leftover chat lines do not look like new events.
+    /// </summary>
+    public void PrimeRegionBaseline(string regionId, IEnumerable<string> lines) =>
+        ApplyRegionLines(regionId, lines, fireEvents: false);
+
+    /// <summary>OCR lines from one named capture region (live monitoring).</summary>
+    public void ProcessRegionLines(string regionId, IEnumerable<string> lines)
+    {
+        bool accept;
+        lock (_gate)
+            accept = _acceptMatchEvents;
+        ApplyRegionLines(regionId, lines, fireEvents: accept);
+    }
+
+    private void ApplyRegionLines(string regionId, IEnumerable<string> lines, bool fireEvents)
+    {
+        if (string.IsNullOrWhiteSpace(regionId))
+            return;
+
+        var entries = lines
+            .Select(raw => (raw ?? string.Empty).Trim())
+            .Where(raw => raw.Length > 0)
+            .ToList();
+        var blob = string.Join("\n", entries);
+
+        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
+        {
+            // Order: cast → land → warn → fade.
+            // Warn before fade so a warn line that also loosely resembles fade still alarms
+            // before any clear, and fade uses specificity against warn/land/cast.
+
+            if (RegionEquals(def.CastRegionId, regionId))
+            {
+                var castNow = CountPhraseMatches(entries, blob, def, def.CastText);
+                int castWas;
+                bool allow;
+                lock (_gate)
+                {
+                    castWas = _previousCastCounts.GetValueOrDefault(def.Id);
+                    _previousCastCounts[def.Id] = castNow;
+                    allow = fireEvents && _acceptMatchEvents;
+                    if (allow && castNow > castWas)
+                        _armedFromCast.Add(def.Id);
+                }
+            }
+
+            if (RegionEquals(def.LandRegionId, regionId))
+            {
+                var landNow = CountPhraseMatches(entries, blob, def, def.LandText);
+                int landWas;
+                bool newLandOccurrence;
+                bool castArmedLand;
+                lock (_gate)
+                {
+                    landWas = _previousLandCounts.GetValueOrDefault(def.Id);
+                    _previousLandCounts[def.Id] = landNow;
+                    newLandOccurrence = fireEvents && _acceptMatchEvents && landNow > landWas;
+                    castArmedLand = fireEvents && _acceptMatchEvents
+                                    && landNow > 0
+                                    && _armedFromCast.Remove(def.Id);
+                }
+
+                if (newLandOccurrence || castArmedLand)
+                    LandBuff(def);
+            }
+
+            if (RegionEquals(def.WarnRegionId, regionId) && !string.IsNullOrWhiteSpace(def.WarnText))
+            {
+                var warnNow = CountPhraseMatches(entries, blob, def, def.WarnText);
+                int warnWas;
+                bool allow;
+                lock (_gate)
+                {
+                    warnWas = _previousWarnCounts.GetValueOrDefault(def.Id);
+                    _previousWarnCounts[def.Id] = warnNow;
+                    allow = fireEvents && _acceptMatchEvents;
+                }
+
+                if (allow && warnNow > warnWas)
+                    TriggerWarnFromText(def);
+            }
+
+            if (RegionEquals(def.FadeRegionId, regionId))
+            {
+                var fadeNow = CountPhraseMatches(entries, blob, def, def.FadeText);
+                int fadeWas;
+                bool allow;
+                lock (_gate)
+                {
+                    fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
+                    _previousFadeCounts[def.Id] = fadeNow;
+                    allow = fireEvents && _acceptMatchEvents;
+                }
+
+                if (allow && fadeNow > fadeWas)
+                    FadeBuff(def);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Count lines that match <paramref name="needle"/> for this buff, but let a longer
+    /// configured phrase that also matches "own" the line (warn over short fade, etc.).
+    /// </summary>
+    private static int CountPhraseMatches(
+        List<string> entries,
+        string blob,
+        BuffDefinition def,
+        string? needle)
+    {
+        if (string.IsNullOrWhiteSpace(needle))
+            return 0;
+
+        var count = entries.Count(line => LineOwnsPhrase(line, def, needle));
+        if (count == 0 && LineOwnsPhrase(blob, def, needle))
+            return 1;
+        return count;
+    }
+
+    private static bool LineOwnsPhrase(string line, BuffDefinition def, string needle)
+    {
+        if (!TextMatch.ContainsLoose(line, needle))
+            return false;
+
+        // Longer same-buff phrases that also match steal the line from shorter ones.
+        // Example: fade "You appear" must not claim warn "You begin to feel yourself appearing".
+        foreach (var other in PhrasesOf(def))
+        {
+            if (string.Equals(other, needle, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!TextMatch.ContainsLoose(line, other))
+                continue;
+
+            var otherNorm = TextMatch.Normalize(other);
+            var needleNorm = TextMatch.Normalize(needle);
+            if (otherNorm.Length > needleNorm.Length)
+                return false;
+
+            // Same length rare; if the other phrase contains this needle, prefer other.
+            if (otherNorm.Length == needleNorm.Length)
+                continue;
+            if (TextMatch.ContainsLoose(other, needle))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static IEnumerable<string> PhrasesOf(BuffDefinition def)
+    {
+        if (!string.IsNullOrWhiteSpace(def.CastText)) yield return def.CastText;
+        if (!string.IsNullOrWhiteSpace(def.LandText)) yield return def.LandText;
+        if (!string.IsNullOrWhiteSpace(def.FadeText)) yield return def.FadeText;
+        if (!string.IsNullOrWhiteSpace(def.WarnText)) yield return def.WarnText;
+    }
+
+    private void TriggerWarnFromText(BuffDefinition def)
+    {
+        void Apply()
+        {
+            var active = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            if (active is null)
+                return;
+            if (active.Warned)
+                return;
+
+            active.Warned = true;
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.WarnVoiceText,
+                $"{def.Name} warning");
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
+    private void FadeBuff(BuffDefinition def)
+    {
+        void Apply()
+        {
+            var existing = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            if (existing is null) return;
+            ActiveBuffs.Remove(existing);
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.FadeVoiceText,
+                $"{def.Name} faded");
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
+    private static bool RegionEquals(string? configured, string regionId) =>
+        !string.IsNullOrWhiteSpace(configured)
+        && string.Equals(configured, regionId, StringComparison.Ordinal);
 
     public void SetLoadedAbilities(IEnumerable<string> names)
     {
@@ -82,10 +281,7 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     public void LandBuff(BuffDefinition def)
@@ -100,15 +296,13 @@ public sealed class BuffTrackerService : IDisposable
             {
                 Definition = def,
                 LandedAtUtc = DateTime.UtcNow,
-                Remaining = TimeSpan.FromSeconds(def.DurationSeconds)
+                Remaining = TimeSpan.FromSeconds(Math.Max(1, def.DurationSeconds)),
+                Warned = false
             });
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     public void ClearBuff(string buffId)
@@ -121,19 +315,24 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     /// <summary>Manual test helper — lands a buff without OCR.</summary>
     public void TestLand(BuffDefinition def) => LandBuff(def);
 
+    private static void PostUi(Action apply)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            apply();
+        else
+            dispatcher.BeginInvoke(apply);
+    }
+
     private void Tick()
     {
         var now = DateTime.UtcNow;
-        ActiveBuff expired = null!;
         foreach (var buff in ActiveBuffs.ToList())
         {
             var elapsed = now - buff.LandedAtUtc;
@@ -141,27 +340,26 @@ public sealed class BuffTrackerService : IDisposable
             buff.Remaining = remaining;
 
             if (remaining <= TimeSpan.Zero)
-            {
-                expired = buff;
                 continue;
-            }
 
-            if (!buff.Warned && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
+            if (string.IsNullOrWhiteSpace(buff.Definition.WarnText)
+                && !buff.Warned
+                && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
             {
                 buff.Warned = true;
-                _alarms.Play(buff.Definition.AlarmSound);
+                _alarms.PlayAlert(
+                    buff.Definition.AlertMode,
+                    buff.Definition.AlarmSound,
+                    buff.Definition.WarnVoiceText,
+                    $"{buff.Definition.Name} warning");
             }
         }
 
-        if (expired is not null)
-        {
-            ActiveBuffs.Remove(expired);
-            Changed?.Invoke();
-        }
-
-        // Remove any others that expired this tick
-        foreach (var buff in ActiveBuffs.Where(b => b.Remaining <= TimeSpan.Zero).ToList())
+        var expired = ActiveBuffs.Where(b => b.Remaining <= TimeSpan.Zero).ToList();
+        if (expired.Count == 0) return;
+        foreach (var buff in expired)
             ActiveBuffs.Remove(buff);
+        Changed?.Invoke();
     }
 
     public void Dispose() => _tick.Stop();

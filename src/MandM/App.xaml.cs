@@ -43,6 +43,19 @@ public partial class App : Application
             "Consuming Pact"
         ]);
 
+        // Seed mouse-highlight so Options shows a realistic enabled state in shots.
+        State.Settings.MouseHighlight = new MouseHighlightSettings
+        {
+            Enabled = true,
+            ColorHex = "#2FD8C7",
+            Diameter = 52,
+            Thickness = 3,
+            Opacity = 0.85,
+            Blink = false,
+            SecondRing = true,
+            SecondDiameter = 88
+        };
+
         var main = new MainWindow
         {
             WindowStartupLocation = WindowStartupLocation.Manual,
@@ -53,6 +66,14 @@ public partial class App : Application
         main.UpdateLayout();
         DoEvents();
         SaveWindowPng(main, Path.Combine(outDir, "main-buff-tracker.png"));
+
+        // Damage Tracker tab with a closed fight so the ability doughnut has slices.
+        SeedDamageChart();
+        main.TabDamage.IsChecked = true;
+        DoEvents();
+        SaveWindowPng(main, Path.Combine(outDir, "main-damage-tracker.png"));
+        main.TabBuffs.IsChecked = true;
+        DoEvents();
 
         var overlay = new OverlayWindow(State.Tracker)
         {
@@ -72,16 +93,62 @@ public partial class App : Application
             Owner = main,
             WindowStartupLocation = WindowStartupLocation.Manual,
             Left = 200,
-            Top = 120
+            Top = 40,
+            Height = 720
         };
         options.Show();
         options.UpdateLayout();
         DoEvents();
         SaveWindowPng(options, Path.Combine(outDir, "options.png"));
+        // Dedicated crop-friendly alias for the cursor settings section
+        SaveWindowPng(options, Path.Combine(outDir, "options-mouse-highlight.png"));
 
+        // Region picker with EQDM-style pointer circle staged for the shot.
+        var picker = new RegionPickerWindow
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            WindowState = WindowState.Normal,
+            Left = 40,
+            Top = 40,
+            Width = 960,
+            Height = 540,
+            Topmost = false,
+            ShowActivated = false
+        };
+        picker.Show();
+        picker.UpdateLayout();
+        DoEvents();
+        picker.ShowPreviewDemo(new Point(520, 300), new Rect(280, 180, 360, 160));
+        DoEvents();
+        SaveWindowPng(picker, Path.Combine(outDir, "region-picker-mouse-circle.png"));
+
+        picker.Close();
         options.Close();
         overlay.Close();
         main.Close();
+    }
+
+    private static void SeedDamageChart()
+    {
+        var region = State.Settings.CaptureRegions.FirstOrDefault();
+        if (region is null || string.IsNullOrWhiteSpace(region.Id))
+            return;
+
+        var previous = State.Settings.DamageRegionId;
+        State.Settings.DamageRegionId = region.Id;
+        State.Damage.UpdateSettings(State.Settings);
+        State.Damage.MarkBaselineReady();
+        string[] lines =
+        [
+            "You slash a crystal dervish for 120 points of damage.",
+            "Your Arcane Spear II hits a crystal dervish for 80 points of Magic Damage",
+            "a crystal dervish has taken 45 damage from your Denon's Disruptive Discord.",
+            "You crush a crystal dervish for 30 points of damage.",
+            "Your frost strike hits a crystal dervish for 18 points of damage."
+        ];
+        State.Damage.ProcessRegionLines(region.Id, lines);
+        State.Damage.ProcessRegionLines(region.Id, lines.Append("You have slain a crystal dervish!"));
+        State.Settings.DamageRegionId = previous;
     }
 
     private static string ResolveScreenshotDir()
