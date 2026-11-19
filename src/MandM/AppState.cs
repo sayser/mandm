@@ -18,14 +18,16 @@ public sealed class AppState : IDisposable
     public AppState()
     {
         Settings = SettingsService.Load();
+        Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker = new BuffTrackerService(Settings, Alarms);
-        UserTimers = new UserTimerService(Settings);
+        UserTimers = new UserTimerService(Settings, Alarms);
         Monitor = new CaptureMonitorService(Settings, Ocr, Tracker);
     }
 
     public void SaveSettings()
     {
         SettingsService.Save(Settings);
+        Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker.UpdateSettings(Settings);
         UserTimers.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);
@@ -34,6 +36,7 @@ public sealed class AppState : IDisposable
     public void ReloadSettings()
     {
         Settings = SettingsService.Load();
+        Alarms.UpdateVoiceSettings(Settings.Voice ?? new VoiceSettings());
         Tracker.UpdateSettings(Settings);
         UserTimers.UpdateSettings(Settings);
         Monitor.UpdateSettings(Settings);

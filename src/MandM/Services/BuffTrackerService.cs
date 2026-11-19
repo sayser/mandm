@@ -160,7 +160,7 @@ public sealed class BuffTrackerService : IDisposable
                 }
 
                 if (allow && fadeNow > fadeWas)
-                    ClearBuff(def.Id);
+                    FadeBuff(def);
             }
         }
     }
@@ -232,7 +232,32 @@ public sealed class BuffTrackerService : IDisposable
                 return;
 
             active.Warned = true;
-            _alarms.Play(def.AlarmSound);
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.WarnVoiceText,
+                $"{def.Name} warning");
+            Changed?.Invoke();
+        }
+
+        if (Application.Current?.Dispatcher.CheckAccess() == true)
+            Apply();
+        else
+            Application.Current?.Dispatcher.Invoke(Apply);
+    }
+
+    private void FadeBuff(BuffDefinition def)
+    {
+        void Apply()
+        {
+            var existing = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            if (existing is null) return;
+            ActiveBuffs.Remove(existing);
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.FadeVoiceText,
+                $"{def.Name} faded");
             Changed?.Invoke();
         }
 
@@ -328,7 +353,11 @@ public sealed class BuffTrackerService : IDisposable
                 && remaining.TotalSeconds <= buff.Definition.WarnSeconds)
             {
                 buff.Warned = true;
-                _alarms.Play(buff.Definition.AlarmSound);
+                _alarms.PlayAlert(
+                    buff.Definition.AlertMode,
+                    buff.Definition.AlarmSound,
+                    buff.Definition.WarnVoiceText,
+                    $"{buff.Definition.Name} warning");
             }
         }
 

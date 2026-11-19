@@ -3,7 +3,7 @@ using MandM.Models;
 namespace MandM.Services;
 
 /// <summary>
-/// Periodically OCR's every named capture region.
+/// Periodically OCR's every named capture region, skipping unchanged frames.
 /// </summary>
 public sealed class CaptureMonitorService : IDisposable
 {
@@ -15,6 +15,9 @@ public sealed class CaptureMonitorService : IDisposable
     private AppSettings _settings;
     private readonly object _baselineGate = new();
     private bool _needsBaseline = true;
+    private readonly Dictionary<string, ulong> _frameHashes = new(StringComparer.Ordinal);
+    private int _skippedFrames;
+    private int _ocrFrames;
 
     public string Status { get; private set; } = "Idle";
     public event Action<string>? StatusChanged;
@@ -55,6 +58,9 @@ public sealed class CaptureMonitorService : IDisposable
     {
         lock (_baselineGate)
             _needsBaseline = true;
+        _frameHashes.Clear();
+        _skippedFrames = 0;
+        _ocrFrames = 0;
         _tracker.InvalidateMatchBaseline();
     }
 
@@ -83,7 +89,8 @@ public sealed class CaptureMonitorService : IDisposable
             try
             {
                 var settings = _settings;
-                var interval = Math.Clamp(settings.OcrIntervalMs, 250, 5000);
+                // Reasonable poll: clamp a bit higher floor so we don't thrash GPU/CPU.
+                var interval = Math.Clamp(settings.OcrIntervalMs, 400, 5000);
                 var regions = settings.CaptureRegions?.Where(r => r.IsValid).ToList() ?? [];
 
                 if (ConsumeBaselineRequest())
@@ -96,19 +103,32 @@ public sealed class CaptureMonitorService : IDisposable
                     continue;
                 }
 
+                var ocrThisPass = 0;
+                var skippedThisPass = 0;
                 foreach (var named in regions)
                 {
                     using var bmp = _capture.Capture(named.Region);
                     if (bmp is null)
                         continue;
 
+                    var hash = ScreenCaptureService.ComputeContentHash(bmp);
+                    if (_frameHashes.TryGetValue(named.Id, out var prior) && prior == hash)
+                    {
+                        skippedThisPass++;
+                        _skippedFrames++;
+                        continue;
+                    }
+
+                    _frameHashes[named.Id] = hash;
                     var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
+                    ocrThisPass++;
+                    _ocrFrames++;
                     _tracker.ProcessRegionLines(named.Id, lines);
                     PublishPreview(named, settings, lines);
                 }
 
                 SetStatus(regions.Count > 0
-                    ? $"Monitoring {regions.Count} region(s) (every {interval} ms)"
+                    ? $"Monitoring {regions.Count} region(s) · OCR {ocrThisPass}/{regions.Count} this tick (skip unchanged) · every {interval} ms"
                     : "Set capture regions in Options");
 
                 await Task.Delay(interval, ct);
@@ -136,6 +156,7 @@ public sealed class CaptureMonitorService : IDisposable
     {
         SetStatus("Capturing OCR baseline (ignoring on-screen text)…");
         _tracker.InvalidateMatchBaseline();
+        _frameHashes.Clear();
 
         foreach (var named in regions)
         {
@@ -143,12 +164,12 @@ public sealed class CaptureMonitorService : IDisposable
             if (bmp is null)
                 continue;
 
+            _frameHashes[named.Id] = ScreenCaptureService.ComputeContentHash(bmp);
             var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
             _tracker.PrimeRegionBaseline(named.Id, lines);
             PublishPreview(named, settings, lines);
         }
 
-        // If settings/start requested another baseline while we were OCR'ing, stay gated.
         bool anotherPending;
         lock (_baselineGate)
             anotherPending = _needsBaseline;

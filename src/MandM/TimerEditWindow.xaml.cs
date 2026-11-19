@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Controls;
 using MandM.Models;
+using MandM.Services;
 
 namespace MandM;
 
@@ -15,6 +17,45 @@ public partial class TimerEditWindow : Window
         var total = Math.Max(0, def.DurationSeconds);
         TxtDurationMin.Text = (total / 60).ToString();
         TxtDurationSec.Text = (total % 60).ToString();
+        TxtVoice.Text = def.VoiceText;
+
+        CmbAlertMode.ItemsSource = new[]
+        {
+            new { Mode = AlertMode.Sound, Label = "Sound (wav / system)" },
+            new { Mode = AlertMode.Voice, Label = "Voice (spoken text)" }
+        };
+        CmbAlertMode.DisplayMemberPath = "Label";
+        CmbAlertMode.SelectedValuePath = "Mode";
+        CmbAlertMode.SelectedValue = AlertModeOptions.Normalize(def.AlertMode);
+
+        CmbSound.ItemsSource = AlarmService.BuiltInSounds;
+        CmbSound.Text = string.IsNullOrWhiteSpace(def.AlarmSound) ? "Exclamation" : def.AlarmSound;
+        RefreshAlertPanels();
+    }
+
+    private AlertMode SelectedAlertMode() =>
+        CmbAlertMode.SelectedValue is AlertMode mode
+            ? AlertModeOptions.Normalize(mode)
+            : AlertMode.Sound;
+
+    private void AlertMode_Changed(object sender, SelectionChangedEventArgs e) => RefreshAlertPanels();
+
+    private void RefreshAlertPanels()
+    {
+        if (PanelSound is null || PanelVoice is null) return;
+        var voice = SelectedAlertMode() == AlertMode.Voice;
+        PanelSound.Visibility = voice ? Visibility.Collapsed : Visibility.Visible;
+        PanelVoice.Visibility = voice ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void TestAlert_Click(object sender, RoutedEventArgs e)
+    {
+        var name = string.IsNullOrWhiteSpace(TxtName.Text) ? "Timer" : TxtName.Text.Trim();
+        App.State.Alarms.PlayAlert(
+            SelectedAlertMode(),
+            CmbSound.Text,
+            TxtVoice.Text,
+            $"{name} finished");
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
@@ -49,6 +90,9 @@ public partial class TimerEditWindow : Window
 
         Result.Name = TxtName.Text.Trim();
         Result.DurationSeconds = totalSeconds;
+        Result.AlertMode = SelectedAlertMode();
+        Result.AlarmSound = string.IsNullOrWhiteSpace(CmbSound.Text) ? "Exclamation" : CmbSound.Text.Trim();
+        Result.VoiceText = TxtVoice.Text.Trim();
         DialogResult = true;
         Close();
     }

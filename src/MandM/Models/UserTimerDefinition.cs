@@ -7,6 +7,11 @@ public sealed class UserTimerDefinition
     /// <summary>Countdown length in seconds.</summary>
     public int DurationSeconds { get; set; } = 300;
 
+    public AlertMode AlertMode { get; set; } = AlertMode.Sound;
+    public string AlarmSound { get; set; } = "Exclamation";
+    /// <summary>Spoken text when the timer hits zero (Voice mode). Empty → "{Name} finished".</summary>
+    public string VoiceText { get; set; } = string.Empty;
+
     public string DurationDisplay =>
         DurationSeconds >= 3600
             ? $"{DurationSeconds / 3600.0:0.#}h"
@@ -18,6 +23,9 @@ public sealed class UserTimerDefinition
     {
         Id = Id,
         Name = Name,
-        DurationSeconds = DurationSeconds
+        DurationSeconds = DurationSeconds,
+        AlertMode = AlertMode,
+        AlarmSound = AlarmSound,
+        VoiceText = VoiceText
     };
 }

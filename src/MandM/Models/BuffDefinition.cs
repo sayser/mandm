@@ -20,8 +20,14 @@ public sealed class BuffDefinition
     public string FadeRegionId { get; set; } = string.Empty;
     public string WarnRegionId { get; set; } = string.Empty;
 
-    /// <summary>Built-in sound id (Beep, Asterisk, Exclamation, Hand, Question) or absolute .wav path.</summary>
+    public AlertMode AlertMode { get; set; } = AlertMode.Sound;
+    /// <summary>Built-in sound id or absolute .wav path (Sound mode).</summary>
     public string AlarmSound { get; set; } = "Exclamation";
+    /// <summary>Spoken warn alert text (Voice mode). Empty → "{Name} warning".</summary>
+    public string WarnVoiceText { get; set; } = string.Empty;
+    /// <summary>Spoken fade alert text (Voice mode). Empty → "{Name} faded".</summary>
+    public string FadeVoiceText { get; set; } = string.Empty;
+
     public bool Enabled { get; set; } = true;
 
     public string DurationDisplay =>
@@ -33,6 +39,9 @@ public sealed class BuffDefinition
         string.IsNullOrWhiteSpace(WarnText)
             ? $"{WarnSeconds}s"
             : "text";
+
+    public string AlertDisplay =>
+        AlertModeOptions.Normalize(AlertMode) == AlertMode.Voice ? "Voice" : AlarmSound;
 
     public string StatusDisplay => Enabled ? "Enabled" : "Disabled";
 
@@ -50,7 +59,10 @@ public sealed class BuffDefinition
         LandRegionId = LandRegionId,
         FadeRegionId = FadeRegionId,
         WarnRegionId = WarnRegionId,
+        AlertMode = AlertMode,
         AlarmSound = AlarmSound,
+        WarnVoiceText = WarnVoiceText,
+        FadeVoiceText = FadeVoiceText,
         Enabled = Enabled
     };
 
@@ -63,6 +75,7 @@ public sealed class BuffDefinition
         LandText = "You feel the speed of the pack within you",
         FadeText = "Your bestial speed fades",
         WarnText = string.Empty,
+        AlertMode = AlertMode.Sound,
         AlarmSound = "Exclamation",
         Enabled = true
     };

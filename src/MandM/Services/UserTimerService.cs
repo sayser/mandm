@@ -8,14 +8,16 @@ namespace MandM.Services;
 public sealed class UserTimerService : IDisposable
 {
     private readonly DispatcherTimer _tick;
+    private readonly AlarmService _alarms;
     private AppSettings _settings;
 
     public ObservableCollection<ActiveUserTimer> Timers { get; } = [];
     public event Action? Changed;
 
-    public UserTimerService(AppSettings settings)
+    public UserTimerService(AppSettings settings, AlarmService alarms)
     {
         _settings = settings;
+        _alarms = alarms;
         RebuildFromSettings();
         _tick = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _tick.Tick += (_, _) => Tick();
@@ -26,21 +28,14 @@ public sealed class UserTimerService : IDisposable
     {
         _settings = settings;
         var runningIds = Timers.Where(t => t.IsRunning).Select(t => t.Definition.Id).ToHashSet(StringComparer.Ordinal);
-        var remainingById = Timers.ToDictionary(t => t.Definition.Id, t => t.Remaining);
 
         Timers.Clear();
         foreach (var def in _settings.UserTimers ?? [])
         {
-            var timer = new ActiveUserTimer { Definition = def };
+            var timer = CreateTimer(def);
             timer.Reset();
-            if (runningIds.Contains(def.Id) && remainingById.TryGetValue(def.Id, out var left) && left > TimeSpan.Zero)
-            {
-                // Resume with previous remaining after definition refresh.
-                // ActiveUserTimer doesn't expose set-remaining-while-running easily; reset then start with snap:
-                // Simplest UX after edit: leave stopped at full duration (caller may Reset).
+            if (runningIds.Contains(def.Id))
                 timer.Reset();
-            }
-
             Timers.Add(timer);
         }
 
@@ -51,12 +46,26 @@ public sealed class UserTimerService : IDisposable
     {
         Timers.Clear();
         foreach (var def in _settings.UserTimers ?? [])
-        {
-            var timer = new ActiveUserTimer { Definition = def };
-            timer.Reset();
-            Timers.Add(timer);
-        }
+            Timers.Add(CreateTimer(def));
+        Changed?.Invoke();
+    }
 
+    private ActiveUserTimer CreateTimer(UserTimerDefinition def)
+    {
+        var timer = new ActiveUserTimer { Definition = def };
+        timer.Reset();
+        timer.Expired += OnTimerExpired;
+        return timer;
+    }
+
+    private void OnTimerExpired(ActiveUserTimer timer)
+    {
+        var def = timer.Definition;
+        _alarms.PlayAlert(
+            def.AlertMode,
+            def.AlarmSound,
+            def.VoiceText,
+            $"{def.Name} finished");
         Changed?.Invoke();
     }
 
@@ -64,8 +73,7 @@ public sealed class UserTimerService : IDisposable
     {
         _settings.UserTimers ??= [];
         _settings.UserTimers.Add(def);
-        var timer = new ActiveUserTimer { Definition = def };
-        timer.Reset();
+        var timer = CreateTimer(def);
 
         void Apply()
         {
@@ -89,7 +97,11 @@ public sealed class UserTimerService : IDisposable
         {
             var existing = Timers.FirstOrDefault(t => t.Definition.Id == id);
             if (existing is not null)
+            {
+                existing.Expired -= OnTimerExpired;
                 Timers.Remove(existing);
+            }
+
             Changed?.Invoke();
         }
 

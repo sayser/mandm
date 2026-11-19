@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using MandM.Models;
+using MandM.Services;
 
 namespace MandM;
 
@@ -34,6 +35,16 @@ public partial class OptionsWindow : Window
 
         TxtInterval.Text = s.OcrIntervalMs.ToString();
         TxtSettingsPath.Text = App.State.SettingsService.SettingsPath;
+
+        var voices = WindowsTts.ListVoices();
+        CmbVoice.ItemsSource = voices;
+        var voiceId = s.Voice?.WindowsVoiceId ?? string.Empty;
+        CmbVoice.SelectedItem = voices.FirstOrDefault(v =>
+                                    string.Equals(v.Id, voiceId, StringComparison.OrdinalIgnoreCase))
+                                ?? voices.FirstOrDefault();
+        SldVoiceVolume.Value = Math.Clamp(s.Voice?.VolumePercent is > 0 and var vol ? vol : 100, 0, 100);
+        SldVoiceVolume.ValueChanged += VoiceVolume_Changed;
+        RefreshVoiceVolumeLabel();
 
         SldDiameter.ValueChanged += Slider_ValueChanged;
         SldThickness.ValueChanged += Slider_ValueChanged;
@@ -158,6 +169,29 @@ public partial class OptionsWindow : Window
         ListRegions.SelectedItem = selected;
     }
 
+    private void VoiceVolume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) =>
+        RefreshVoiceVolumeLabel();
+
+    private void RefreshVoiceVolumeLabel()
+    {
+        if (TxtVoiceVolume is null) return;
+        TxtVoiceVolume.Text = $"{SldVoiceVolume.Value:0}%";
+    }
+
+    private void PreviewVoice_Click(object sender, RoutedEventArgs e)
+    {
+        var previous = App.State.Alarms.CurrentVoiceSettings;
+        App.State.Alarms.UpdateVoiceSettings(ReadVoiceSettings());
+        App.State.Alarms.PreviewVoice();
+        App.State.Alarms.UpdateVoiceSettings(previous);
+    }
+
+    private VoiceSettings ReadVoiceSettings() => new()
+    {
+        WindowsVoiceId = (CmbVoice.SelectedItem as VoiceOption)?.Id ?? string.Empty,
+        VolumePercent = (int)Math.Round(SldVoiceVolume.Value)
+    };
+
     private void AddRegion_Click(object sender, RoutedEventArgs e)
     {
         var name = NamePromptWindow.Prompt(this, "Add capture region", "Region name", "New Region");
@@ -239,6 +273,7 @@ public partial class OptionsWindow : Window
 
         App.State.Settings.CaptureRegions = _regions.Select(r => r.Clone()).ToList();
         App.State.Settings.OcrIntervalMs = interval;
+        App.State.Settings.Voice = ReadVoiceSettings();
         App.State.Settings.MouseHighlight = ReadMouseHighlight();
 
         // Mirror legacy fields from named list.

@@ -82,6 +82,38 @@
             </StackPanel>
           </Border>
 
+          <!-- Spoken alerts (EQDM-style Windows voice) -->
+          <Border Style="{StaticResource GlassCard}" Padding="18,16" Margin="0,0,0,12">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                <TextBlock Text="🔊" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                  <TextBlock Text="SPOKEN ALERTS" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                  <TextBlock Text="Windows natural voice for buff warn/fade and timer alarms (EQDM-style)"
+                             Foreground="#66879D" FontSize="10"/>
+                </StackPanel>
+              </StackPanel>
+
+              <TextBlock Text="VOICE" Style="{StaticResource DialogLabel}"/>
+              <ComboBox Name="CmbVoice" Margin="0,0,0,10"
+                        DisplayMemberPath="Label"
+                        Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"/>
+
+              <Grid Margin="0,0,0,10">
+                <TextBlock Text="VOLUME" Style="{StaticResource DialogLabel}" Margin="0"/>
+                <TextBlock Name="TxtVoiceVolume" HorizontalAlignment="Right" Foreground="#C8E0EE" FontSize="11"/>
+              </Grid>
+              <Slider Name="SldVoiceVolume" Minimum="0" Maximum="100" TickFrequency="5"
+                      IsSnapToTickEnabled="True" Margin="0,0,0,10"/>
+
+              <StackPanel Orientation="Horizontal">
+                <Button Content="Preview voice" MinWidth="120" Padding="12,7" Click="PreviewVoice_Click"/>
+              </StackPanel>
+              <TextBlock Text="Per buff/timer: set Alert Output to Voice and enter custom spoken text."
+                         Foreground="#66879D" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+
           <!-- Mouse highlight (EQDM parity) -->
           <Border Style="{StaticResource GlassCard}" Padding="18,16">
             <StackPanel>

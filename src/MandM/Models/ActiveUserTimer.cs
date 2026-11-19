@@ -7,6 +7,7 @@ public sealed class ActiveUserTimer : INotifyPropertyChanged
 {
     private TimeSpan _remaining;
     private bool _running;
+    private bool _expireAlerted;
     private DateTime? _startedAtUtc;
     private TimeSpan _remainingAtStart;
 
@@ -61,10 +62,14 @@ public sealed class ActiveUserTimer : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Raised once when a running timer reaches zero (UI thread of the tick).</summary>
+    public event Action<ActiveUserTimer>? Expired;
+
     public void Reset()
     {
         IsRunning = false;
         _startedAtUtc = null;
+        _expireAlerted = false;
         Remaining = TimeSpan.FromSeconds(Math.Max(1, Definition.DurationSeconds));
     }
 
@@ -74,6 +79,7 @@ public sealed class ActiveUserTimer : INotifyPropertyChanged
             Remaining = TimeSpan.FromSeconds(Math.Max(1, Definition.DurationSeconds));
         _remainingAtStart = Remaining;
         _startedAtUtc = DateTime.UtcNow;
+        _expireAlerted = false;
         IsRunning = true;
     }
 
@@ -95,6 +101,11 @@ public sealed class ActiveUserTimer : INotifyPropertyChanged
             Remaining = TimeSpan.Zero;
             IsRunning = false;
             _startedAtUtc = null;
+            if (!_expireAlerted)
+            {
+                _expireAlerted = true;
+                Expired?.Invoke(this);
+            }
         }
         else
         {

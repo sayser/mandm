@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Edit Buff"
-        Height="720" Width="560"
+        Height="780" Width="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#FF061522">
@@ -109,16 +109,34 @@
             </StackPanel>
           </Border>
 
-          <TextBlock Text="ALARM SOUND" Style="{StaticResource DialogLabel}"/>
-          <DockPanel Margin="0,0,0,6">
-            <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Padding="12,7"
-                    Click="BrowseSound_Click"/>
-            <ComboBox Name="CmbSound" IsEditable="True"
-                      Foreground="#EDF7FF" Background="#A0092235"
-                      BorderBrush="#42677F"/>
-          </DockPanel>
-          <TextBlock Text="Built-ins: Beep, Asterisk, Exclamation, Hand, Question — or pick a .wav file."
-                     Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+          <TextBlock Text="ALERT OUTPUT" Style="{StaticResource DialogLabel}"/>
+          <ComboBox Name="CmbAlertMode" Margin="0,0,0,10"
+                    SelectionChanged="AlertMode_Changed"
+                    Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"/>
+
+          <StackPanel Name="PanelSound">
+            <TextBlock Text="ALARM SOUND" Style="{StaticResource DialogLabel}"/>
+            <DockPanel Margin="0,0,0,6">
+              <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Padding="12,7"
+                      Click="BrowseSound_Click"/>
+              <ComboBox Name="CmbSound" IsEditable="True"
+                        Foreground="#EDF7FF" Background="#A0092235"
+                        BorderBrush="#42677F"/>
+            </DockPanel>
+            <TextBlock Text="Built-ins: Beep, Asterisk, Exclamation, Hand, Question — or pick a .wav file."
+                       Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <StackPanel Name="PanelVoice" Visibility="Collapsed">
+            <TextBlock Text="WARN VOICE TEXT" Style="{StaticResource DialogLabel}"/>
+            <TextBox Name="TxtWarnVoice" Margin="0,0,0,10"
+                     ToolTip="Spoken on warn. Empty uses “{buff} warning”."/>
+            <TextBlock Text="FADE VOICE TEXT" Style="{StaticResource DialogLabel}"/>
+            <TextBox Name="TxtFadeVoice" Margin="0,0,0,6"
+                     ToolTip="Spoken on fade. Empty uses “{buff} faded”."/>
+            <TextBlock Text="Voice is chosen in Options → Spoken alerts. Test uses the warn line."
+                       Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+          </StackPanel>
         </StackPanel>
       </ScrollViewer>
     </Border>

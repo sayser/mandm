@@ -27,6 +27,7 @@ public sealed class AppSettings
     public int OcrIntervalMs { get; set; } = 750;
     public string UpdateRepo { get; set; } = "sayser/mandm";
     public MouseHighlightSettings MouseHighlight { get; set; } = new();
+    public VoiceSettings Voice { get; set; } = new();
 
     public static AppSettings CreateDefault()
     {

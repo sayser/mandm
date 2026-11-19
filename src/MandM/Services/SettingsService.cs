@@ -44,6 +44,7 @@ public sealed class SettingsService
             settings.UserTimers ??= [];
             settings.CaptureRegions ??= [];
             settings.MouseHighlight ??= new MouseHighlightSettings();
+            settings.Voice ??= new VoiceSettings();
             MigrateAndNormalize(settings);
 
             // Always persist to the stable location (and out of Temp\.net\…).
@@ -80,6 +81,10 @@ public sealed class SettingsService
         settings.Buffs ??= [];
         settings.UserTimers ??= [];
         settings.MouseHighlight ??= new MouseHighlightSettings();
+        settings.Voice ??= new VoiceSettings();
+        settings.Voice.WindowsVoiceId ??= string.Empty;
+        settings.Voice.VolumePercent = Math.Clamp(
+            settings.Voice.VolumePercent <= 0 ? 100 : settings.Voice.VolumePercent, 0, 100);
 
         if (settings.CaptureRegions.Count == 0)
         {
@@ -120,13 +125,24 @@ public sealed class SettingsService
             buff.LandText ??= string.Empty;
             buff.FadeText ??= string.Empty;
             buff.WarnText ??= string.Empty;
+            buff.WarnVoiceText ??= string.Empty;
+            buff.FadeVoiceText ??= string.Empty;
+            buff.AlarmSound = string.IsNullOrWhiteSpace(buff.AlarmSound) ? "Exclamation" : buff.AlarmSound;
+            buff.AlertMode = AlertModeOptions.Normalize(buff.AlertMode);
             if (string.IsNullOrWhiteSpace(buff.CastRegionId)) buff.CastRegionId = defaultRegionId;
             if (string.IsNullOrWhiteSpace(buff.LandRegionId)) buff.LandRegionId = defaultRegionId;
             if (string.IsNullOrWhiteSpace(buff.FadeRegionId)) buff.FadeRegionId = defaultRegionId;
             if (string.IsNullOrWhiteSpace(buff.WarnRegionId)) buff.WarnRegionId = defaultRegionId;
         }
 
-        settings.Version = Math.Max(settings.Version, 2);
+        foreach (var timer in settings.UserTimers)
+        {
+            timer.VoiceText ??= string.Empty;
+            timer.AlarmSound = string.IsNullOrWhiteSpace(timer.AlarmSound) ? "Exclamation" : timer.AlarmSound;
+            timer.AlertMode = AlertModeOptions.Normalize(timer.AlertMode);
+        }
+
+        settings.Version = Math.Max(settings.Version, 3);
     }
 
     /// <summary>
