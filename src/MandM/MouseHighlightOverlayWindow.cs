@@ -11,16 +11,20 @@ using MandM.Models;
 namespace MandM;
 
 /// <summary>
-/// Click-through fullscreen rings that track the cursor (ported from EQDM MouseHighlight).
+/// Click-through ring that follows the cursor. Position comes from Win32
+/// GetCursorPos on a dedicated thread and SetWindowPos, so a busy UI thread
+/// cannot freeze the ring.
 /// </summary>
 public sealed class MouseHighlightOverlayWindow : Window
 {
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+
     private readonly Canvas _canvas;
     private readonly Ellipse _inner;
     private readonly Ellipse _outer;
-    private readonly TranslateTransform _innerTx = new();
-    private readonly TranslateTransform _outerTx = new();
-    private readonly DispatcherTimer _followTimer;
+    private readonly DispatcherTimer _blinkTimer;
 
     private Color _color = Color.FromRgb(255, 85, 34);
     private double _diameter = 48;
@@ -30,10 +34,10 @@ public sealed class MouseHighlightOverlayWindow : Window
     private bool _blink;
     private double _blinkHz = 2.0;
     private bool _secondRing;
-    private bool _enabled;
-    private bool _rendering;
-    private int _lastCursorX = int.MinValue;
-    private int _lastCursorY = int.MinValue;
+    private volatile bool _enabled;
+    private volatile bool _follow;
+    private volatile IntPtr _hwnd;
+    private Thread? _followThread;
     private double _lastBlinkOpacity = -1;
 
     public MouseHighlightOverlayWindow()
@@ -47,11 +51,10 @@ public sealed class MouseHighlightOverlayWindow : Window
         ResizeMode = ResizeMode.NoResize;
         ShowActivated = false;
         IsHitTestVisible = false;
+        WindowStartupLocation = WindowStartupLocation.Manual;
 
         _inner = CreateRing();
         _outer = CreateRing();
-        _inner.RenderTransform = _innerTx;
-        _outer.RenderTransform = _outerTx;
         _outer.Visibility = Visibility.Collapsed;
 
         _canvas = new Canvas { IsHitTestVisible = false };
@@ -59,25 +62,24 @@ public sealed class MouseHighlightOverlayWindow : Window
         _canvas.Children.Add(_inner);
         Content = _canvas;
 
-        _followTimer = new DispatcherTimer(DispatcherPriority.Render)
+        _blinkTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(33)
+            Interval = TimeSpan.FromMilliseconds(50)
         };
-        _followTimer.Tick += (_, _) => OnFollowTick();
+        _blinkTimer.Tick += (_, _) => UpdateBlink();
 
         SourceInitialized += (_, _) =>
         {
-            CoverVirtualScreen();
+            _hwnd = new WindowInteropHelper(this).Handle;
             ApplyClickThrough();
         };
         Loaded += (_, _) =>
         {
-            CoverVirtualScreen();
+            _hwnd = new WindowInteropHelper(this).Handle;
             ApplyClickThrough();
-            SetRendering(true);
-            FollowCursor(force: true);
+            PlaceRings();
         };
-        Closed += (_, _) => SetRendering(false);
+        Closed += (_, _) => StopFollow();
     }
 
     public void ApplyOptions(MouseHighlightSettings settings)
@@ -93,18 +95,25 @@ public sealed class MouseHighlightOverlayWindow : Window
         _blinkHz = Math.Clamp(settings.BlinkHz <= 0 ? 2.0 : settings.BlinkHz, 0.5, 8.0);
         _secondRing = settings.SecondRing;
         ApplyAppearance();
+        PlaceRings();
 
         if (_enabled)
         {
             if (!IsVisible) Show();
-            CoverVirtualScreen();
+            _hwnd = new WindowInteropHelper(this).Handle;
             ApplyClickThrough();
-            SetRendering(true);
-            FollowCursor(force: true);
+            StartFollow();
+            if (_blink) _blinkTimer.Start();
+            else
+            {
+                _blinkTimer.Stop();
+                ApplyOpacity(_baseOpacity);
+            }
         }
         else
         {
-            SetRendering(false);
+            _blinkTimer.Stop();
+            StopFollow();
             if (IsVisible) Hide();
         }
     }
@@ -134,6 +143,18 @@ public sealed class MouseHighlightOverlayWindow : Window
         ring.Stroke = brush;
     }
 
+    private void PlaceRings()
+    {
+        var outer = _secondRing ? _secondDiameter : _diameter;
+        var size = Math.Max(_diameter, outer) + _thickness * 2 + 4;
+        Width = size;
+        Height = size;
+        Canvas.SetLeft(_inner, (size - _diameter) / 2.0);
+        Canvas.SetTop(_inner, (size - _diameter) / 2.0);
+        Canvas.SetLeft(_outer, (size - _secondDiameter) / 2.0);
+        Canvas.SetTop(_outer, (size - _secondDiameter) / 2.0);
+    }
+
     private void ApplyOpacity(double opacity)
     {
         _inner.Opacity = opacity;
@@ -141,26 +162,9 @@ public sealed class MouseHighlightOverlayWindow : Window
         _lastBlinkOpacity = opacity;
     }
 
-    private void SetRendering(bool on)
-    {
-        if (on == _rendering) return;
-        if (on) _followTimer.Start();
-        else _followTimer.Stop();
-        _rendering = on;
-    }
-
-    private void OnFollowTick()
-    {
-        if (!_enabled || !IsVisible) return;
-        FollowCursor(force: false);
-        if (_blink)
-            UpdateBlink();
-        else if (_lastBlinkOpacity != _baseOpacity)
-            ApplyOpacity(_baseOpacity);
-    }
-
     private void UpdateBlink()
     {
+        if (!_blink || !_enabled) return;
         var phase = (Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency) * _blinkHz;
         var wave = 0.5 + 0.5 * Math.Sin(phase * Math.PI * 2.0);
         var opacity = _baseOpacity * (0.15 + 0.85 * wave);
@@ -168,46 +172,71 @@ public sealed class MouseHighlightOverlayWindow : Window
         ApplyOpacity(opacity);
     }
 
-    private void FollowCursor(bool force)
+    private void StartFollow()
     {
-        if (!GetCursorPos(out var pt)) return;
-        if (!force && pt.X == _lastCursorX && pt.Y == _lastCursorY) return;
-        _lastCursorX = pt.X;
-        _lastCursorY = pt.Y;
-
-        var screen = new Point(pt.X, pt.Y);
-        if (PresentationSource.FromVisual(this) is { CompositionTarget: { } target })
-            screen = target.TransformFromDevice.Transform(screen);
-
-        var x = screen.X - Left;
-        var y = screen.Y - Top;
-        _innerTx.X = x - _diameter / 2.0;
-        _innerTx.Y = y - _diameter / 2.0;
-        if (_secondRing)
+        if (_followThread is { IsAlive: true })
+            return;
+        _follow = true;
+        _followThread = new Thread(FollowLoop)
         {
-            _outerTx.X = x - _secondDiameter / 2.0;
-            _outerTx.Y = y - _secondDiameter / 2.0;
-        }
+            IsBackground = true,
+            Name = "MandM cursor",
+            Priority = ThreadPriority.Normal
+        };
+        _followThread.Start();
     }
 
-    private void CoverVirtualScreen()
+    private void StopFollow()
     {
-        Left = SystemParameters.VirtualScreenLeft;
-        Top = SystemParameters.VirtualScreenTop;
-        Width = SystemParameters.VirtualScreenWidth;
-        Height = SystemParameters.VirtualScreenHeight;
+        _follow = false;
+        _followThread = null;
+    }
+
+    private void FollowLoop()
+    {
+        var lastX = int.MinValue;
+        var lastY = int.MinValue;
+        while (_follow)
+        {
+            var hwnd = _hwnd;
+            if (_enabled && hwnd != IntPtr.Zero && GetCursorPos(out var pt) && (pt.X != lastX || pt.Y != lastY))
+            {
+                lastX = pt.X;
+                lastY = pt.Y;
+                if (GetWindowRect(hwnd, out var rect))
+                {
+                    var width = rect.Right - rect.Left;
+                    var height = rect.Bottom - rect.Top;
+                    if (width > 0 && height > 0)
+                    {
+                        SetWindowPos(
+                            hwnd,
+                            IntPtr.Zero,
+                            pt.X - width / 2,
+                            pt.Y - height / 2,
+                            0,
+                            0,
+                            SwpNoSize | SwpNoZOrder | SwpNoActivate);
+                    }
+                }
+            }
+
+            Thread.Sleep(8);
+        }
     }
 
     private void ApplyClickThrough()
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
+        var hwnd = _hwnd != IntPtr.Zero ? _hwnd : new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero) return;
+        _hwnd = hwnd;
         const int gwlExStyle = -20;
         const int wsExTransparent = 0x00000020;
         const int wsExLayered = 0x00080000;
         const int wsExToolWindow = 0x00000080;
+        const int wsExNoActivate = 0x08000000;
         var style = GetWindowLong(hwnd, gwlExStyle);
-        SetWindowLong(hwnd, gwlExStyle, style | wsExTransparent | wsExLayered | wsExToolWindow);
+        SetWindowLong(hwnd, gwlExStyle, style | wsExTransparent | wsExLayered | wsExToolWindow | wsExNoActivate);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -217,8 +246,23 @@ public sealed class MouseHighlightOverlayWindow : Window
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [DllImport("user32.dll")]
     private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);

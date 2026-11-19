@@ -269,6 +269,20 @@ var splitHit = DamageLineParser.JoinWrapped(
 splitFight.ApplyFrame(splitHit, splitHit, t0.AddSeconds(2));
 Check("a wrapped hit starts the fight that stayed stopped",
     splitFight.Tracking && splitFight.DamageDealt == 438);
+var still = new DamageFight();
+still.ApplyFrame([crush], [crush], t0);
+still.ApplyFrame(
+    [pest],
+    ["You have slain a crystal dervish!", crush, pest],
+    t0.AddSeconds(1));
+Check("slain text still on screen does not end the fight",
+    still.Tracking && still.DamageDealt == 470);
+still.ApplyFrame(
+    ["Your party member Andromocles has slain a tormented guardian!"],
+    [pest, "Your party member Andromocles has slain a tormented guardian!"],
+    t0.AddSeconds(2));
+Check("a new party slain line ends the fight",
+    !still.Tracking && still.SlainBy == "Andromocles" && still.DamageDealt == 470);
 
 if (failed > 0)
 {

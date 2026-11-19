@@ -10,23 +10,48 @@ namespace MandM.Services;
 
 public sealed class OcrService
 {
-    private readonly OcrEngine? _engine;
+    private OcrEngine? _engine;
+    private int _engineThreadId = -1;
+    private bool? _available;
     private byte[]? _bgraScratch;
     private byte[]? _packedScratch;
     private readonly List<string> _lineScratch = new(32);
 
-    public OcrService()
+    public bool IsAvailable
     {
-        _engine = OcrEngine.TryCreateFromUserProfileLanguages()
-                  ?? OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"));
+        get
+        {
+            if (_available is null)
+            {
+                // Probe only. The engine used for Recognize is created on the capture thread.
+                var probe = TryCreateEngine();
+                _available = probe is not null;
+            }
+
+            return _available.Value;
+        }
     }
 
-    public bool IsAvailable => _engine is not null;
-
     public string? UnavailableReason =>
-        _engine is null
-            ? "Windows OCR is unavailable. Install an English OCR language pack (Settings → Time & language → Language & region)."
-            : null;
+        IsAvailable
+            ? null
+            : "Windows OCR is unavailable. Install an English OCR language pack (Settings → Time & language → Language & region).";
+
+    private OcrEngine? EngineOnThisThread()
+    {
+        var id = Environment.CurrentManagedThreadId;
+        if (_engine is not null && _engineThreadId == id)
+            return _engine;
+        _engine = TryCreateEngine();
+        _engineThreadId = id;
+        if (_engine is null)
+            _available = false;
+        return _engine;
+    }
+
+    private static OcrEngine? TryCreateEngine() =>
+        OcrEngine.TryCreateFromUserProfileLanguages()
+        ?? OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"));
 
     public async Task<string> RecognizeAsync(Bitmap bitmap, CancellationToken ct = default)
     {
@@ -39,7 +64,8 @@ public sealed class OcrService
     /// </summary>
     public async Task<IReadOnlyList<string>> RecognizeLinesAsync(Bitmap bitmap, CancellationToken ct = default)
     {
-        if (_engine is null)
+        var engine = EngineOnThisThread();
+        if (engine is null)
             return Array.Empty<string>();
 
         try
@@ -52,7 +78,7 @@ public sealed class OcrService
             softwareBitmap.CopyFromBuffer(packed.AsBuffer(0, width * height * 4));
 
             ct.ThrowIfCancellationRequested();
-            var result = await _engine.RecognizeAsync(softwareBitmap);
+            var result = await engine.RecognizeAsync(softwareBitmap);
             _lineScratch.Clear();
             foreach (var line in result.Lines)
             {
@@ -95,7 +121,8 @@ public sealed class OcrService
 
     private async Task<IReadOnlyList<string>> RecognizeLinesViaPngAsync(Bitmap bitmap, CancellationToken ct)
     {
-        if (_engine is null)
+        var engine = EngineOnThisThread();
+        if (engine is null)
             return Array.Empty<string>();
 
         using var stream = new InMemoryRandomAccessStream();
@@ -113,7 +140,7 @@ public sealed class OcrService
             BitmapAlphaMode.Premultiplied);
 
         ct.ThrowIfCancellationRequested();
-        var result = await _engine.RecognizeAsync(softwareBitmap);
+        var result = await engine.RecognizeAsync(softwareBitmap);
         var lines = new List<string>();
         foreach (var line in result.Lines)
         {

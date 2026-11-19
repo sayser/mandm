@@ -20,10 +20,10 @@ public sealed class DamageTrackerService
     public ObservableCollection<AbilityDamageRow> Abilities { get; } = [];
     public event Action? Changed;
 
-    public bool HasFight => _fight.HasFight;
-    public bool Tracking => _fight.Tracking;
-    public int DamageDealt => _fight.DamageDealt;
-    public string SlainTarget => _fight.SlainTarget;
+    public bool HasFight { get { lock (_gate) return _fight.HasFight; } }
+    public bool Tracking { get { lock (_gate) return _fight.Tracking; } }
+    public int DamageDealt { get { lock (_gate) return _fight.DamageDealt; } }
+    public string SlainTarget { get { lock (_gate) return _fight.SlainTarget; } }
 
     public DamageTrackerService(AppSettings settings)
     {
@@ -36,36 +36,42 @@ public sealed class DamageTrackerService
     {
         get
         {
-            if (!_fight.HasFight)
-                return "0:00";
-            var span = TimeSpan.FromSeconds(_fight.SecondsAt(DateTime.Now));
-            return span.TotalHours >= 1
-                ? span.ToString(@"h\:mm\:ss")
-                : span.ToString(@"m\:ss");
+            lock (_gate)
+            {
+                if (!_fight.HasFight)
+                    return "0:00";
+                var span = TimeSpan.FromSeconds(_fight.SecondsAt(DateTime.Now));
+                return span.TotalHours >= 1
+                    ? span.ToString(@"h\:mm\:ss")
+                    : span.ToString(@"m\:ss");
+            }
         }
     }
 
-    public string DamageDealtDisplay => _fight.DamageDealt.ToString("N0");
+    public string DamageDealtDisplay { get { lock (_gate) return _fight.DamageDealt.ToString("N0"); } }
 
-    public string DpsDisplay => _fight.HasFight ? _fight.DpsAt(DateTime.Now).ToString("0.0") : "—";
+    public string DpsDisplay { get { lock (_gate) return _fight.HasFight ? _fight.DpsAt(DateTime.Now).ToString("0.0") : "—"; } }
 
     public string StatusDisplay
     {
         get
         {
-            if (_fight.Tracking)
-                return "In fight";
-            if (_fight.HasFight
-                && _fight.SlainBy.Equals("You", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
-                return "Fight ended — you have slain " + _fight.SlainTarget;
-            if (_fight.HasFight
-                && !string.IsNullOrWhiteSpace(_fight.SlainBy)
-                && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
-                return "Fight ended — " + _fight.SlainBy + " has slain " + _fight.SlainTarget;
-            if (_fight.HasFight)
-                return "Fight ended";
-            return "Waiting for a hit";
+            lock (_gate)
+            {
+                if (_fight.Tracking)
+                    return "In fight";
+                if (_fight.HasFight
+                    && _fight.SlainBy.Equals("You", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
+                    return "Fight ended — you have slain " + _fight.SlainTarget;
+                if (_fight.HasFight
+                    && !string.IsNullOrWhiteSpace(_fight.SlainBy)
+                    && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
+                    return "Fight ended — " + _fight.SlainBy + " has slain " + _fight.SlainTarget;
+                if (_fight.HasFight)
+                    return "Fight ended";
+                return "Waiting for a hit";
+            }
         }
     }
 
@@ -105,55 +111,49 @@ public sealed class DamageTrackerService
             return;
 
         var visible = lines as IReadOnlyList<string> ?? lines.ToList();
-        List<string> fresh;
+        List<AbilityDamageRow> rows;
+        bool tracking;
         lock (_gate)
-            fresh = _buffer.Observe(visible);
-        if (fresh.Count == 0)
-            return;
-
-        void Apply()
         {
+            var fresh = _buffer.Observe(visible);
+            if (fresh.Count == 0)
+                return;
             if (!_fight.ApplyFrame(fresh, visible, DateTime.Now))
                 return;
-            PublishAbilities();
-            SyncClock();
-            Changed?.Invoke();
+            rows = SnapshotAbilities();
+            tracking = _fight.Tracking;
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else if (Application.Current is not null)
-            Application.Current.Dispatcher.Invoke(Apply);
-        else
-            Apply();
+        PostUi(() =>
+        {
+            Abilities.Clear();
+            foreach (var row in rows)
+                Abilities.Add(row);
+            SyncClock(tracking);
+            Changed?.Invoke();
+        });
     }
 
     public void ClearFight()
     {
-        void Apply()
-        {
+        lock (_gate)
             _fight.Reset();
-            PublishAbilities();
-            SyncClock();
+        PostUi(() =>
+        {
+            Abilities.Clear();
+            SyncClock(false);
             Changed?.Invoke();
-        }
-
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else if (Application.Current is not null)
-            Application.Current.Dispatcher.Invoke(Apply);
-        else
-            Apply();
+        });
     }
 
-    private void PublishAbilities()
+    private List<AbilityDamageRow> SnapshotAbilities()
     {
-        Abilities.Clear();
         var dealt = _fight.DamageDealt;
+        var rows = new List<AbilityDamageRow>();
         var index = 0;
         foreach (var (name, damage) in _fight.Abilities)
         {
-            Abilities.Add(new AbilityDamageRow
+            rows.Add(new AbilityDamageRow
             {
                 Name = name,
                 Damage = damage,
@@ -161,11 +161,13 @@ public sealed class DamageTrackerService
                 Color = AbilityDamageRow.ColorAt(index++)
             });
         }
+
+        return rows;
     }
 
-    private void SyncClock()
+    private void SyncClock(bool tracking)
     {
-        if (_fight.Tracking)
+        if (tracking)
         {
             if (!_clock.IsEnabled)
                 _clock.Start();
@@ -174,6 +176,15 @@ public sealed class DamageTrackerService
         {
             _clock.Stop();
         }
+    }
+
+    private static void PostUi(Action apply)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            apply();
+        else
+            dispatcher.BeginInvoke(apply);
     }
 
     private bool IsSelected(string regionId) =>

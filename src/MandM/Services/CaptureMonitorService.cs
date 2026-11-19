@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Drawing;
+using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using MandM.Models;
 
 namespace MandM.Services;
@@ -15,13 +17,14 @@ public sealed class CaptureMonitorService : IDisposable
     private readonly BuffTrackerService _tracker;
     private readonly DamageTrackerService _damage;
     private CancellationTokenSource? _cts;
-    private Task? _loop;
+    private Thread? _thread;
+    private Dispatcher? _captureDispatcher;
+    private volatile bool _stop;
     private AppSettings _settings;
     private readonly object _baselineGate = new();
     private bool _needsBaseline = true;
     private readonly Dictionary<string, RegionSlot> _slots = new(StringComparer.Ordinal);
     private string _lastStatus = string.Empty;
-    private int _idleStreak;
     private long _totalCaptures;
     private long _totalOcr;
     private long _totalSkipped;
@@ -57,18 +60,52 @@ public sealed class CaptureMonitorService : IDisposable
         Stop();
         SyncRegionSnapshots();
         RequestBaseline();
+        _stop = false;
         _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => LoopAsync(_cts.Token));
+        var cts = _cts;
+        _thread = new Thread(() => RunCaptureThread(cts))
+        {
+            IsBackground = true,
+            Name = "MandM capture"
+        };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
     }
 
     public void Stop()
     {
+        _stop = true;
         try { _cts?.Cancel(); } catch { /* ignore */ }
+        var dispatcher = _captureDispatcher;
+        if (dispatcher is not null && !dispatcher.HasShutdownStarted)
+        {
+            try { dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal); } catch { /* ignore */ }
+        }
+
+        _thread?.Join(TimeSpan.FromSeconds(2));
         _cts?.Dispose();
         _cts = null;
-        _loop = null;
+        _thread = null;
+        _captureDispatcher = null;
         DisposeSlots();
         SetStatus("Stopped");
+    }
+
+    private void RunCaptureThread(CancellationTokenSource cts)
+    {
+        var dispatcher = Dispatcher.CurrentDispatcher;
+        _captureDispatcher = dispatcher;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+        if (_stop)
+        {
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+        }
+        else
+        {
+            dispatcher.BeginInvoke(new Action(() => _ = LoopAsync(cts.Token)));
+        }
+
+        Dispatcher.Run();
     }
 
     private void RequestBaseline()
@@ -77,7 +114,6 @@ public sealed class CaptureMonitorService : IDisposable
             _needsBaseline = true;
         foreach (var slot in _slots.Values)
             slot.ResetHash();
-        _idleStreak = 0;
         _tracker.InvalidateMatchBaseline();
         _damage.InvalidateMatchBaseline();
     }
@@ -160,15 +196,12 @@ public sealed class CaptureMonitorService : IDisposable
                     PublishPreview(named, settings, lines, slot);
                 }
 
-                if (ocrThisPass == 0 && skippedThisPass > 0)
-                    _idleStreak++;
-                else
-                    _idleStreak = 0;
-
-                // Mild backoff while every live region is unchanged (chat idle).
-                var delay = _idleStreak >= 3
-                    ? Math.Min(interval * 2, Math.Max(interval, 1200))
-                    : interval;
+                var idle = ocrThisPass == 0 && (skippedThisPass > 0 || capturedThisPass == 0);
+                // Unchanged frames skip OCR and wait longer. A changed frame uses the
+                // user's interval. Never spin.
+                var delay = idle
+                    ? Math.Clamp(interval * 3, 1500, 4000)
+                    : Math.Clamp(interval, 500, 5000);
 
                 SetStatus("Live");
 
@@ -256,10 +289,7 @@ public sealed class CaptureMonitorService : IDisposable
             }
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostToUi(Apply);
     }
 
     private RegionSlot GetOrCreateSlot(string id)
@@ -320,10 +350,16 @@ public sealed class CaptureMonitorService : IDisposable
             snap.Text = text;
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
+        PostToUi(Apply);
+    }
+
+    private static void PostToUi(Action apply)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            apply();
         else
-            Application.Current?.Dispatcher.Invoke(Apply);
+            dispatcher.BeginInvoke(apply);
     }
 
     private static bool IsAbilitiesRegion(NamedCaptureRegion named) =>

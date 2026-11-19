@@ -240,10 +240,7 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     private void FadeBuff(BuffDefinition def)
@@ -261,10 +258,7 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     private static bool RegionEquals(string? configured, string regionId) =>
@@ -287,10 +281,7 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     public void LandBuff(BuffDefinition def)
@@ -311,10 +302,7 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     public void ClearBuff(string buffId)
@@ -327,14 +315,20 @@ public sealed class BuffTrackerService : IDisposable
             Changed?.Invoke();
         }
 
-        if (Application.Current?.Dispatcher.CheckAccess() == true)
-            Apply();
-        else
-            Application.Current?.Dispatcher.Invoke(Apply);
+        PostUi(Apply);
     }
 
     /// <summary>Manual test helper — lands a buff without OCR.</summary>
     public void TestLand(BuffDefinition def) => LandBuff(def);
+
+    private static void PostUi(Action apply)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            apply();
+        else
+            dispatcher.BeginInvoke(apply);
+    }
 
     private void Tick()
     {
