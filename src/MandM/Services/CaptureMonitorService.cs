@@ -13,6 +13,8 @@ public sealed class CaptureMonitorService : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings;
+    private readonly object _baselineGate = new();
+    private bool _needsBaseline = true;
 
     public string Status { get; private set; } = "Idle";
     public event Action<string>? StatusChanged;
@@ -26,11 +28,16 @@ public sealed class CaptureMonitorService : IDisposable
         _tracker = tracker;
     }
 
-    public void UpdateSettings(AppSettings settings) => _settings = settings;
+    public void UpdateSettings(AppSettings settings)
+    {
+        _settings = settings;
+        RequestBaseline();
+    }
 
     public void Start()
     {
         Stop();
+        RequestBaseline();
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token));
     }
@@ -42,6 +49,24 @@ public sealed class CaptureMonitorService : IDisposable
         _cts = null;
         _loop = null;
         SetStatus("Stopped");
+    }
+
+    private void RequestBaseline()
+    {
+        lock (_baselineGate)
+            _needsBaseline = true;
+        _tracker.InvalidateMatchBaseline();
+    }
+
+    private bool ConsumeBaselineRequest()
+    {
+        lock (_baselineGate)
+        {
+            if (!_needsBaseline)
+                return false;
+            _needsBaseline = false;
+            return true;
+        }
     }
 
     private async Task LoopAsync(CancellationToken ct)
@@ -61,6 +86,16 @@ public sealed class CaptureMonitorService : IDisposable
                 var interval = Math.Clamp(settings.OcrIntervalMs, 250, 5000);
                 var regions = settings.CaptureRegions?.Where(r => r.IsValid).ToList() ?? [];
 
+                if (ConsumeBaselineRequest())
+                {
+                    await CaptureBaselineAsync(settings, regions, ct);
+                    SetStatus(regions.Count > 0
+                        ? $"Baseline captured — monitoring {regions.Count} region(s)"
+                        : "Set capture regions in Options");
+                    await Task.Delay(interval, ct);
+                    continue;
+                }
+
                 foreach (var named in regions)
                 {
                     using var bmp = _capture.Capture(named.Region);
@@ -69,21 +104,7 @@ public sealed class CaptureMonitorService : IDisposable
 
                     var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
                     _tracker.ProcessRegionLines(named.Id, lines);
-
-                    if (IsAbilitiesRegion(named))
-                    {
-                        var cleaned = lines
-                            .Select(CleanAbilityLine)
-                            .Where(s => !string.IsNullOrWhiteSpace(s))
-                            .Cast<string>()
-                            .ToList();
-                        AbilitiesPreviewChanged?.Invoke(string.Join(Environment.NewLine, cleaned));
-                        _tracker.SetLoadedAbilities(cleaned);
-                    }
-                    else if (IsCombatPreviewRegion(named, settings))
-                    {
-                        CombatPreviewChanged?.Invoke(string.Join(Environment.NewLine, lines));
-                    }
+                    PublishPreview(named, settings, lines);
                 }
 
                 SetStatus(regions.Count > 0
@@ -104,6 +125,55 @@ public sealed class CaptureMonitorService : IDisposable
         }
     }
 
+    /// <summary>
+    /// First OCR pass after start/settings change: seed match counters only.
+    /// On-screen land/warn/fade/cast lines must not trigger buff actions.
+    /// </summary>
+    private async Task CaptureBaselineAsync(
+        AppSettings settings,
+        List<NamedCaptureRegion> regions,
+        CancellationToken ct)
+    {
+        SetStatus("Capturing OCR baseline (ignoring on-screen text)…");
+        _tracker.InvalidateMatchBaseline();
+
+        foreach (var named in regions)
+        {
+            using var bmp = _capture.Capture(named.Region);
+            if (bmp is null)
+                continue;
+
+            var lines = await _ocr.RecognizeLinesAsync(bmp, ct);
+            _tracker.PrimeRegionBaseline(named.Id, lines);
+            PublishPreview(named, settings, lines);
+        }
+
+        // If settings/start requested another baseline while we were OCR'ing, stay gated.
+        bool anotherPending;
+        lock (_baselineGate)
+            anotherPending = _needsBaseline;
+        if (!anotherPending)
+            _tracker.MarkBaselineReady();
+    }
+
+    private void PublishPreview(NamedCaptureRegion named, AppSettings settings, IReadOnlyList<string> lines)
+    {
+        if (IsAbilitiesRegion(named))
+        {
+            var cleaned = lines
+                .Select(CleanAbilityLine)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Cast<string>()
+                .ToList();
+            AbilitiesPreviewChanged?.Invoke(string.Join(Environment.NewLine, cleaned));
+            _tracker.SetLoadedAbilities(cleaned);
+        }
+        else if (IsCombatPreviewRegion(named, settings))
+        {
+            CombatPreviewChanged?.Invoke(string.Join(Environment.NewLine, lines));
+        }
+    }
+
     private static bool IsAbilitiesRegion(NamedCaptureRegion named) =>
         string.Equals(named.Name, "Abilities", StringComparison.OrdinalIgnoreCase);
 
@@ -112,7 +182,6 @@ public sealed class CaptureMonitorService : IDisposable
         if (string.Equals(named.Name, "Combat Text", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // Fallback preview: first non-Abilities region.
         var first = settings.CaptureRegions
             .FirstOrDefault(r => r.IsValid && !IsAbilitiesRegion(r));
         return first is not null && string.Equals(first.Id, named.Id, StringComparison.Ordinal);

@@ -18,6 +18,8 @@ public sealed class BuffTrackerService : IDisposable
     /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
     private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
+    /// <summary>False until an OCR baseline pass finishes — blocks land/warn/fade/cast actions.</summary>
+    private bool _acceptMatchEvents;
 
     public ObservableCollection<ActiveBuff> ActiveBuffs { get; } = [];
     public ObservableCollection<string> LoadedAbilities { get; } = [];
@@ -35,8 +37,18 @@ public sealed class BuffTrackerService : IDisposable
     public void UpdateSettings(AppSettings settings)
     {
         _settings = settings;
+        InvalidateMatchBaseline();
+    }
+
+    /// <summary>
+    /// Clear match counters so the next OCR pass must re-baseline.
+    /// Prevents mid-session settings saves from treating on-screen text as brand new.
+    /// </summary>
+    public void InvalidateMatchBaseline()
+    {
         lock (_gate)
         {
+            _acceptMatchEvents = false;
             _previousLandCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -45,8 +57,30 @@ public sealed class BuffTrackerService : IDisposable
         }
     }
 
-    /// <summary>OCR lines from one named capture region.</summary>
+    public void MarkBaselineReady()
+    {
+        lock (_gate)
+            _acceptMatchEvents = true;
+    }
+
+    /// <summary>
+    /// Snapshot current OCR for a region into match counters without starting/resetting/warning/fading.
+    /// Used at monitor start so leftover chat lines do not look like new events.
+    /// </summary>
+    public void PrimeRegionBaseline(string regionId, IEnumerable<string> lines) =>
+        ApplyRegionLines(regionId, lines, fireEvents: false);
+
+    /// <summary>OCR lines from one named capture region (live monitoring).</summary>
     public void ProcessRegionLines(string regionId, IEnumerable<string> lines)
+    {
+        // If a baseline is pending (startup / settings change), only seed counters.
+        bool accept;
+        lock (_gate)
+            accept = _acceptMatchEvents;
+        ApplyRegionLines(regionId, lines, fireEvents: accept);
+    }
+
+    private void ApplyRegionLines(string regionId, IEnumerable<string> lines, bool fireEvents)
     {
         if (string.IsNullOrWhiteSpace(regionId))
             return;
@@ -63,13 +97,15 @@ public sealed class BuffTrackerService : IDisposable
             {
                 var fadeNow = CountMatches(entries, blob, def.FadeText);
                 int fadeWas;
+                bool allow;
                 lock (_gate)
                 {
                     fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
                     _previousFadeCounts[def.Id] = fadeNow;
+                    allow = fireEvents && _acceptMatchEvents;
                 }
 
-                if (fadeNow > fadeWas)
+                if (allow && fadeNow > fadeWas)
                     ClearBuff(def.Id);
             }
 
@@ -77,15 +113,13 @@ public sealed class BuffTrackerService : IDisposable
             {
                 var castNow = CountMatches(entries, blob, def.CastText);
                 int castWas;
+                bool allow;
                 lock (_gate)
                 {
                     castWas = _previousCastCounts.GetValueOrDefault(def.Id);
                     _previousCastCounts[def.Id] = castNow;
-                }
-
-                if (castNow > castWas)
-                {
-                    lock (_gate)
+                    allow = fireEvents && _acceptMatchEvents;
+                    if (allow && castNow > castWas)
                         _armedFromCast.Add(def.Id);
                 }
             }
@@ -94,16 +128,17 @@ public sealed class BuffTrackerService : IDisposable
             {
                 var landNow = CountMatches(entries, blob, def.LandText);
                 int landWas;
+                bool newLandOccurrence;
+                bool castArmedLand;
                 lock (_gate)
                 {
                     landWas = _previousLandCounts.GetValueOrDefault(def.Id);
                     _previousLandCounts[def.Id] = landNow;
+                    newLandOccurrence = fireEvents && _acceptMatchEvents && landNow > landWas;
+                    castArmedLand = fireEvents && _acceptMatchEvents
+                                    && landNow > 0
+                                    && _armedFromCast.Remove(def.Id);
                 }
-
-                var newLandOccurrence = landNow > landWas;
-                bool castArmedLand;
-                lock (_gate)
-                    castArmedLand = landNow > 0 && _armedFromCast.Remove(def.Id);
 
                 if (newLandOccurrence || castArmedLand)
                     LandBuff(def);
@@ -113,13 +148,15 @@ public sealed class BuffTrackerService : IDisposable
             {
                 var warnNow = CountMatches(entries, blob, def.WarnText);
                 int warnWas;
+                bool allow;
                 lock (_gate)
                 {
                     warnWas = _previousWarnCounts.GetValueOrDefault(def.Id);
                     _previousWarnCounts[def.Id] = warnNow;
+                    allow = fireEvents && _acceptMatchEvents;
                 }
 
-                if (warnNow > warnWas)
+                if (allow && warnNow > warnWas)
                     TriggerWarnFromText(def);
             }
         }
