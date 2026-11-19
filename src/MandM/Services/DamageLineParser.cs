@@ -37,9 +37,26 @@ public static class DamageLineParser
         @"^(?<source>.+?)\s+(?<verb>[A-Za-z]+)\s+YOU$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex EndsYou = new(@"\bYOU$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex Slain = new(
+        @"^You\s+have\s+slain\s+(?<target>.+?)[!.]*\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public static string Collapse(string? raw) =>
         string.IsNullOrWhiteSpace(raw) ? string.Empty : Whitespace.Replace(raw.Trim(), " ");
+
+    /// <summary>"You have slain a crystal dervish!" ends the current fight. Not damage.</summary>
+    public static bool TryParseSlain(string? raw, out string target)
+    {
+        target = string.Empty;
+        var message = StripTimestamp(Collapse(raw));
+        if (message.Length == 0)
+            return false;
+        var match = Slain.Match(message);
+        if (!match.Success)
+            return false;
+        target = Clean(match.Groups["target"].Value);
+        return target.Length > 0;
+    }
 
     public static bool TryParse(string? raw, out ParsedDamage parsed)
     {

@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="..\..\src\MandM\Services\DamageLineParser.cs" Link="DamageLineParser.cs" />
     <Compile Include="..\..\src\MandM\Services\DamageLineBuffer.cs" Link="DamageLineBuffer.cs" />
+    <Compile Include="..\..\src\MandM\Services\DamageFight.cs" Link="DamageFight.cs" />
   </ItemGroup>
 </Project>

@@ -100,6 +100,38 @@ reshuffle.Prime(["alpha hits YOU for 1 points of damage.", "beta line"]);
 var reorder = reshuffle.Observe(["beta line", "alpha hits YOU for 1 points of damage."]);
 Check("reordered same lines are not new", reorder.Count == 0);
 
+Check("slain line",
+    DamageLineParser.TryParseSlain("[07:28:10] You have slain a crystal dervish!", out var slain)
+    && slain == "a crystal dervish");
+Check("slain is not damage", None("You have slain a crystal dervish!"));
+Check("other slain ignored", !DamageLineParser.TryParseSlain("Bob has slain a rat!", out _));
+
+var t0 = new DateTime(2026, 11, 19, 11, 0, 0);
+var fight = new DamageFight();
+DamageLineParser.TryParse("You slash a smuggler for 16 points of damage.", out var slash);
+DamageLineParser.TryParse("Your Arcane Spear II hits a smuggler for 34 points of Magic Damage", out var spear);
+DamageLineParser.TryParse("You slash a smuggler for 10 points of damage.", out var slash2);
+fight.OnDamage(slash, t0);
+fight.OnDamage(spear, t0.AddSeconds(2));
+fight.OnDamage(slash2, t0.AddSeconds(4));
+Check("fight damage is outgoing only", fight.DamageDealt == 60 && fight.Tracking);
+var abilities = fight.Abilities;
+Check("ability breakdown",
+    abilities.Count == 2
+    && abilities[0].Name == "Arcane Spear II" && abilities[0].Damage == 34
+    && abilities[1].Name == "Slash" && abilities[1].Damage == 26);
+Check("dps is damage over seconds", Math.Abs(fight.DpsAt(t0.AddSeconds(4)) - 15.0) < 0.01);
+
+fight.OnSlain("a crystal dervish", t0.AddSeconds(5));
+Check("slain stops the fight", !fight.Tracking && fight.SlainTarget == "a crystal dervish");
+Check("ended duration stays put", Math.Abs(fight.SecondsAt(t0.AddSeconds(30)) - 5) < 0.01);
+
+DamageLineParser.TryParse("A goblin hits YOU for 8 points of damage.", out var incoming);
+fight.OnDamage(incoming, t0.AddSeconds(40));
+Check("next hit starts a new fight", fight.Tracking && fight.DamageDealt == 0 && fight.Abilities.Count == 0);
+fight.OnDamage(slash, t0.AddSeconds(41));
+Check("new fight counts only new damage", fight.DamageDealt == 16 && fight.Abilities[0].Name == "Slash");
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");

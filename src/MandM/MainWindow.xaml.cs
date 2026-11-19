@@ -25,7 +25,7 @@ public partial class MainWindow : Window
         ListActive.ItemsSource = App.State.Tracker.ActiveBuffs;
         ListTimers.ItemsSource = App.State.UserTimers.Timers;
         ListRegionOcr.ItemsSource = App.State.Monitor.RegionSnapshots;
-        ListDamage.ItemsSource = App.State.Damage.Hits;
+        ListAbilities.ItemsSource = App.State.Damage.Abilities;
         RefreshBuffList();
         RefreshDamageRegionList();
         RefreshDamageTotals();
@@ -53,7 +53,6 @@ public partial class MainWindow : Window
                 RefreshStatusPills();
             });
         App.State.Damage.Changed += () => Dispatcher.Invoke(RefreshDamageTotals);
-        App.State.Damage.Hits.CollectionChanged += (_, _) => Dispatcher.Invoke(RefreshDamageTotals);
 
         TxtStatus.Text = App.State.Ocr.IsAvailable
             ? App.State.Monitor.Status
@@ -446,28 +445,32 @@ public partial class MainWindow : Window
         if (selected is null)
         {
             TxtDamageHint.Text =
-                "Pick the named capture region for the window that shows your hits and hits on you. Lines already on screen are ignored until the text changes.";
+                "Pick the named capture region for your combat window. Lines already on screen are ignored. A slain line ends the fight.";
             return;
         }
 
         TxtDamageHint.Text = selected.IsValid
-            ? $"Reading “{selected.Name}”. Only new lines after this selection count — damage you deal, and damage to you."
+            ? $"Reading “{selected.Name}”. New hits start a fight. “You have slain …” ends it until the next hit."
             : $"“{selected.Name}” has no rectangle yet. Set it in Options, then choose it here.";
     }
 
     private void RefreshDamageTotals()
     {
-        if (TxtOutTotal is null) return;
+        if (TxtDamageDealt is null) return;
         var damage = App.State.Damage;
-        TxtOutTotal.Text = damage.OutgoingTotal.ToString("N0");
-        TxtInTotal.Text = damage.IncomingTotal.ToString("N0");
-        TxtOutHits.Text = damage.OutgoingHits == 1 ? "1 hit" : $"{damage.OutgoingHits} hits";
-        TxtInHits.Text = damage.IncomingHits == 1 ? "1 hit" : $"{damage.IncomingHits} hits";
-        TxtNoDamage.Visibility = damage.Hits.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TxtFightDuration.Text = damage.DurationDisplay;
+        TxtDamageDealt.Text = damage.DamageDealtDisplay;
+        TxtFightDps.Text = damage.DpsDisplay;
+        TxtFightStatus.Text = damage.StatusDisplay;
+        TxtNoDamage.Visibility = damage.Abilities.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (damage.Abilities.Count == 0 && damage.HasFight)
+            TxtNoDamage.Text = "Fight started. Ability totals appear as you land hits.";
+        else if (damage.Abilities.Count == 0)
+            TxtNoDamage.Text = "No fight yet. The next new hit starts one. Lines already on screen are ignored.";
     }
 
     private void ResetDamage_Click(object sender, RoutedEventArgs e) =>
-        App.State.Damage.ClearTotals();
+        App.State.Damage.ClearFight();
 
     private async void Updates_Click(object sender, RoutedEventArgs e)
     {

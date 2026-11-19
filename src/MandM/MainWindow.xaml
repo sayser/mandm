@@ -506,7 +506,7 @@
                   <TextBlock Text="⚔" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
                   <StackPanel>
                     <TextBlock Text="DAMAGE TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                    <TextBlock Text="Damage you deal and damage dealt to you. Other players are not counted."
+                    <TextBlock Text="Current fight. A slain line ends it until the next hit."
                                Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
                   </StackPanel>
                 </StackPanel>
@@ -534,19 +534,28 @@
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="12"/>
                   <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Border Background="#61071F31" BorderBrush="#39E0CC" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                <Border Background="#61071F31" BorderBrush="#56839C" BorderThickness="1" CornerRadius="12" Padding="14,12">
                   <StackPanel>
-                    <TextBlock Text="OUTGOING" Style="{StaticResource MetricLabel}"/>
-                    <TextBlock Name="TxtOutTotal" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#39E0CC"/>
-                    <TextBlock Name="TxtOutHits" Text="0 hits" Foreground="#8FDCD9" FontSize="11"/>
+                    <TextBlock Text="DURATION" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Name="TxtFightDuration" Text="0:00" FontSize="28" FontWeight="SemiBold" Foreground="#F0F8FF"/>
+                    <TextBlock Name="TxtFightStatus" Text="Waiting for a hit" Foreground="#8FB4C6" FontSize="11" TextTrimming="CharacterEllipsis"/>
                   </StackPanel>
                 </Border>
-                <Border Grid.Column="2" Background="#61071F31" BorderBrush="#FF8B7A" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                <Border Grid.Column="2" Background="#61071F31" BorderBrush="#39E0CC" BorderThickness="1" CornerRadius="12" Padding="14,12">
                   <StackPanel>
-                    <TextBlock Text="INCOMING" Style="{StaticResource MetricLabel}"/>
-                    <TextBlock Name="TxtInTotal" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#FF8B7A"/>
-                    <TextBlock Name="TxtInHits" Text="0 hits" Foreground="#E7B2AA" FontSize="11"/>
+                    <TextBlock Text="DAMAGE DEALT" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Name="TxtDamageDealt" Text="0" FontSize="28" FontWeight="SemiBold" Foreground="#39E0CC"/>
+                    <TextBlock Text="Outgoing hits only" Foreground="#8FDCD9" FontSize="11"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="4" Background="#61071F31" BorderBrush="#A98BFF" BorderThickness="1" CornerRadius="12" Padding="14,12">
+                  <StackPanel>
+                    <TextBlock Text="DPS" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Name="TxtFightDps" Text="—" FontSize="28" FontWeight="SemiBold" Foreground="#D8C2FF"/>
+                    <TextBlock Text="Damage dealt / fight seconds" Foreground="#B7A6E6" FontSize="11"/>
                   </StackPanel>
                 </Border>
               </Grid>
@@ -557,24 +566,22 @@
                   <RowDefinition Height="Auto"/>
                   <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="LIVE HITS" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
+                <TextBlock Text="ABILITY BREAKDOWN" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
                 <Border Grid.Row="1" Background="#9A0B263A" BorderBrush="#56839C" BorderThickness="1" CornerRadius="10,10,0,0" Padding="10,8">
                   <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="78"/>
-                      <ColumnDefinition Width="52"/>
-                      <ColumnDefinition Width="90"/>
                       <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="110"/>
+                      <ColumnDefinition Width="72"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="TIME" Style="{StaticResource MetricLabel}"/>
-                    <TextBlock Grid.Column="1" Text="DIR" Style="{StaticResource MetricLabel}"/>
-                    <TextBlock Grid.Column="2" Text="AMOUNT" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
-                    <TextBlock Grid.Column="3" Text="WHO" Style="{StaticResource MetricLabel}" Margin="12,0,0,0"/>
+                    <TextBlock Text="ABILITY" Style="{StaticResource MetricLabel}"/>
+                    <TextBlock Grid.Column="1" Text="DAMAGE" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="2" Text="SHARE" Style="{StaticResource MetricLabel}" HorizontalAlignment="Right"/>
                   </Grid>
                 </Border>
                 <Border Grid.Row="2" Background="#61071F31" BorderBrush="#56839C" BorderThickness="1,0,1,1" CornerRadius="0,0,12,12">
                   <Grid>
-                    <ListBox Name="ListDamage" Background="Transparent" BorderThickness="0"
+                    <ListBox Name="ListAbilities" Background="Transparent" BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                       <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
@@ -584,7 +591,7 @@
                           <Setter Property="Template">
                             <Setter.Value>
                               <ControlTemplate TargetType="ListBoxItem">
-                                <Border Background="#360B2638" BorderBrush="#2C4D62" BorderThickness="0,0,0,1" Padding="10,7">
+                                <Border Background="#360B2638" BorderBrush="#2C4D62" BorderThickness="0,0,0,1" Padding="10,8">
                                   <ContentPresenter/>
                                 </Border>
                               </ControlTemplate>
@@ -594,39 +601,31 @@
                       </ListBox.ItemContainerStyle>
                       <ListBox.ItemTemplate>
                         <DataTemplate>
-                          <Grid MinHeight="28">
+                          <Grid MinHeight="32">
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="78"/>
-                              <ColumnDefinition Width="52"/>
-                              <ColumnDefinition Width="90"/>
                               <ColumnDefinition Width="*"/>
+                              <ColumnDefinition Width="110"/>
+                              <ColumnDefinition Width="72"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding TimeDisplay}" VerticalAlignment="Center" Foreground="#8FB4C6" FontSize="12"/>
-                            <TextBlock Grid.Column="1" Text="{Binding DirectionDisplay}" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12">
-                              <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                  <Setter Property="Foreground" Value="#FF8B7A"/>
-                                  <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Outgoing}" Value="True">
-                                      <Setter Property="Foreground" Value="#39E0CC"/>
-                                    </DataTrigger>
-                                  </Style.Triggers>
-                                </Style>
-                              </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Grid.Column="2" Text="{Binding AmountDisplay}" HorizontalAlignment="Right"
-                                       VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#F0F8FF"/>
-                            <StackPanel Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center">
-                              <TextBlock Text="{Binding Who}" FontWeight="SemiBold" Foreground="#F0F8FF"
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#F0F8FF"
                                          TextTrimming="CharacterEllipsis"/>
-                              <TextBlock Text="{Binding Detail}" FontSize="10" Foreground="#66879D"
-                                         TextTrimming="CharacterEllipsis"/>
+                              <ProgressBar Height="3" Margin="0,5,0,0" Minimum="0" Maximum="100"
+                                           Value="{Binding Share}" BorderThickness="0" Background="#22081420">
+                                <ProgressBar.Foreground>
+                                  <SolidColorBrush Color="#A98BFF"/>
+                                </ProgressBar.Foreground>
+                              </ProgressBar>
                             </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding DamageDisplay}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#39E0CC"/>
+                            <TextBlock Grid.Column="2" Text="{Binding ShareDisplay}" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" Foreground="#D8C2FF"/>
                           </Grid>
                         </DataTemplate>
                       </ListBox.ItemTemplate>
                     </ListBox>
-                    <TextBlock Name="TxtNoDamage" Text="No new hits yet. Lines already on screen when tracking starts are ignored."
+                    <TextBlock Name="TxtNoDamage" Text="No fight yet. The next new hit starts one. Lines already on screen are ignored."
                                Foreground="#7899AD" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
                                Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center"
                                IsHitTestVisible="False"/>
