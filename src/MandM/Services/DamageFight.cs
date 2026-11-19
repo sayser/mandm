@@ -15,6 +15,7 @@ public sealed class DamageFight
     public bool HasFight { get; private set; }
     public DateTime? StartedAt { get; private set; }
     public DateTime? EndedAt { get; private set; }
+    public string SlainBy { get; private set; } = string.Empty;
     public string SlainTarget { get; private set; } = string.Empty;
     public int DamageDealt { get; private set; }
 
@@ -45,8 +46,8 @@ public sealed class DamageFight
 
             if (Tracking)
             {
-                DamageLineParser.TryParseSlain(slainLine, out var target);
-                OnSlain(target, when);
+                DamageLineParser.TryParseSlain(slainLine, out var slayer, out var target);
+                FinishSlain(slayer, target, when);
             }
 
             Seal(visible, slainLine);
@@ -101,12 +102,15 @@ public sealed class DamageFight
         _abilities[name] = _abilities.GetValueOrDefault(name) + hit.Amount;
     }
 
-    public void OnSlain(string target, DateTime when)
+    public void OnSlain(string target, DateTime when) => FinishSlain("You", target, when);
+
+    private void FinishSlain(string slayer, string target, DateTime when)
     {
         if (!Tracking)
             return;
         Tracking = false;
         EndedAt = when;
+        SlainBy = string.IsNullOrWhiteSpace(slayer) ? string.Empty : slayer.Trim();
         SlainTarget = string.IsNullOrWhiteSpace(target) ? string.Empty : target.Trim();
     }
 
@@ -116,6 +120,7 @@ public sealed class DamageFight
         HasFight = false;
         StartedAt = null;
         EndedAt = null;
+        SlainBy = string.Empty;
         SlainTarget = string.Empty;
         DamageDealt = 0;
         _abilities.Clear();
@@ -224,6 +229,7 @@ public sealed class DamageFight
     {
         _abilities.Clear();
         DamageDealt = 0;
+        SlainBy = string.Empty;
         SlainTarget = string.Empty;
         EndedAt = null;
         StartedAt = when;

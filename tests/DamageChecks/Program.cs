@@ -104,7 +104,17 @@ Check("slain line",
     DamageLineParser.TryParseSlain("[07:28:10] You have slain a crystal dervish!", out var slain)
     && slain == "a crystal dervish");
 Check("slain is not damage", None("You have slain a crystal dervish!"));
-Check("other slain ignored", !DamageLineParser.TryParseSlain("Bob has slain a rat!", out _));
+Check("party member slain line",
+    DamageLineParser.TryParseSlain(
+        "Your party member Andromocles has slain a tormented guardian!",
+        out var member, out var guardian)
+    && member == "Andromocles"
+    && guardian == "a tormented guardian");
+Check("party slain is not damage",
+    None("Your party member Andromocles has slain a tormented guardian!"));
+Check("another player slain line",
+    DamageLineParser.TryParseSlain("Bob has slain a rat!", out var bob, out var rat)
+    && bob == "Bob" && rat == "a rat");
 
 var t0 = new DateTime(2026, 11, 19, 11, 0, 0);
 var fight = new DamageFight();
@@ -159,6 +169,35 @@ screen.ApplyFrame(
     ["You have slain a crystal dervish!", "A wolf hits YOU for 7 points of damage."],
     t0.AddSeconds(8));
 Check("a later hit starts the next fight", screen.Tracking && screen.DamageDealt == 0);
+
+var partyBlow = "You slash a tormented guardian for 50 points of damage.";
+var partySlain = "Your party member Andromocles has slain a tormented guardian!";
+var partyFight = new DamageFight();
+partyFight.ApplyFrame([partyBlow], [partyBlow], t0);
+Check("fight is open before the party kill", partyFight.Tracking && partyFight.DamageDealt == 50);
+partyFight.ApplyFrame([partySlain], [partySlain, partyBlow], t0.AddSeconds(2));
+Check("party kill ends the fight",
+    !partyFight.Tracking && partyFight.HasFight && partyFight.DamageDealt == 50
+    && partyFight.SlainBy == "Andromocles" && partyFight.SlainTarget == "a tormented guardian");
+partyFight.ApplyFrame(
+    [partySlain, partyBlow],
+    [partySlain, partyBlow],
+    t0.AddSeconds(3));
+Check("leftover party slain does not open a fight", !partyFight.Tracking && partyFight.DamageDealt == 50);
+partyFight.ApplyFrame(
+    ["Your party member Andromocles has slaln a tormented guardian!"],
+    ["Your party member Andromocles has slaln a tormented guardian!"],
+    t0.AddSeconds(4));
+Check("near party slain OCR does not open a fight", !partyFight.Tracking && partyFight.DamageDealt == 50);
+var partyTogether = new DamageFight();
+partyTogether.ApplyFrame([partySlain, partyBlow], [partySlain, partyBlow], t0);
+Check("party slain before the killing blow in one read does not stay open",
+    !partyTogether.Tracking && partyTogether.DamageDealt == 50 && partyTogether.SlainBy == "Andromocles");
+partyFight.ApplyFrame(
+    ["A wolf hits YOU for 7 points of damage."],
+    [partySlain, "A wolf hits YOU for 7 points of damage."],
+    t0.AddSeconds(8));
+Check("a hit after a party kill starts the next fight", partyFight.Tracking && partyFight.DamageDealt == 0);
 
 if (failed > 0)
 {

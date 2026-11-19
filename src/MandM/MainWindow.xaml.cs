@@ -451,7 +451,7 @@ public partial class MainWindow : Window
         }
 
         TxtDamageHint.Text = selected.IsValid
-            ? $"Reading “{selected.Name}”. New hits start a fight. “You have slain …” ends it until the next hit."
+            ? $"Reading “{selected.Name}”. New hits start a fight. Any slain line, including a party member’s kill, ends it until the next hit."
             : $"“{selected.Name}” has no rectangle yet. Set it in Options, then choose it here.";
     }
 

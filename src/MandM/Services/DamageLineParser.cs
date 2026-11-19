@@ -37,8 +37,11 @@ public static class DamageLineParser
         @"^(?<source>.+?)\s+(?<verb>[A-Za-z]+)\s+YOU$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex EndsYou = new(@"\bYOU$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex Slain = new(
-        @"^You\s+have\s+slain\s+(?<target>.+?)[!.]*\s*$",
+    private static readonly Regex YouSlain = new(
+        @"^You\s+(?:have\s+)?slain\s+(?<target>.+?)\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex AnyoneSlain = new(
+        @"^(?:Your\s+party\s+member\s+(?<member>.+?)\s+(?:has\s+)?slain\s+|(?<slayer>.+?)\s+has\s+slain\s+)(?<target>.+?)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public static string Collapse(string? raw) =>
@@ -68,32 +71,57 @@ public static class DamageLineParser
         return chars.ToString();
     }
 
-    /// <summary>Player slain text, including a missing "have" from a bad OCR read.</summary>
+    /// <summary>
+    /// Any slain line ends a fight: "You have slain …", a party member's kill,
+    /// or another "has slain" line. A missing "have" still counts.
+    /// </summary>
     public static bool IsSlainLine(string? raw)
     {
         var text = Canonical(raw);
-        return Regex.IsMatch(text, @"\byou have slain\b")
-               || Regex.IsMatch(text, @"\byou slain\b");
+        return Regex.IsMatch(text, @"\bslain\b");
     }
 
-    /// <summary>"You have slain a crystal dervish!" ends the current fight. Not damage.</summary>
-    public static bool TryParseSlain(string? raw, out string target)
+    /// <summary>Who died. "You have slain a crystal dervish!" yields the mob name.</summary>
+    public static bool TryParseSlain(string? raw, out string target) =>
+        TryParseSlain(raw, out _, out target);
+
+    /// <summary>
+    /// Who got the kill and who died. A party line names the member, not you.
+    /// The line is never damage.
+    /// </summary>
+    public static bool TryParseSlain(string? raw, out string slayer, out string target)
     {
+        slayer = string.Empty;
         target = string.Empty;
         if (!IsSlainLine(raw))
             return false;
-        var message = StripTimestamp(Collapse(raw));
+
+        var message = StripTimestamp(Collapse(raw)).Trim().TrimEnd('.', '!', '?', ' ');
         if (message.Length == 0)
             return false;
-        var match = Slain.Match(message);
-        if (!match.Success)
+
+        var you = YouSlain.Match(message);
+        if (you.Success)
         {
-            target = Canonical(raw);
+            slayer = "You";
+            target = Clean(you.Groups["target"].Value);
             return target.Length > 0;
         }
 
-        target = Clean(match.Groups["target"].Value);
-        return target.Length > 0;
+        var other = AnyoneSlain.Match(message);
+        if (other.Success)
+        {
+            var member = other.Groups["member"].Value;
+            slayer = Clean(member.Length > 0 ? member : other.Groups["slayer"].Value);
+            target = Clean(other.Groups["target"].Value);
+            return target.Length > 0;
+        }
+
+        var canonical = Canonical(raw);
+        var index = canonical.LastIndexOf("slain ", StringComparison.Ordinal);
+        if (index >= 0)
+            target = canonical[(index + "slain ".Length)..].Trim();
+        return true;
     }
 
     public static bool TryParse(string? raw, out ParsedDamage parsed)

@@ -55,8 +55,14 @@ public sealed class DamageTrackerService
         {
             if (_fight.Tracking)
                 return "In fight";
-            if (_fight.HasFight && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
+            if (_fight.HasFight
+                && _fight.SlainBy.Equals("You", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
                 return "Fight ended — you have slain " + _fight.SlainTarget;
+            if (_fight.HasFight
+                && !string.IsNullOrWhiteSpace(_fight.SlainBy)
+                && !string.IsNullOrWhiteSpace(_fight.SlainTarget))
+                return "Fight ended — " + _fight.SlainBy + " has slain " + _fight.SlainTarget;
             if (_fight.HasFight)
                 return "Fight ended";
             return "Waiting for a hit";
