@@ -276,12 +276,6 @@ public partial class MainWindow : Window
         RefreshBuffList();
     }
 
-    private void TestLand_Click(object sender, RoutedEventArgs e)
-    {
-        if (ListBuffs.SelectedItem is not BuffDefinition selected) return;
-        App.State.Tracker.TestLand(selected);
-    }
-
     private async void Updates_Click(object sender, RoutedEventArgs e)
     {
         BtnOverlay.IsEnabled = true;

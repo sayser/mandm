@@ -147,22 +147,26 @@
               <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <DockPanel Grid.Row="0" Margin="0,0,0,10">
-              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Grid Grid.Row="0" Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="120"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
                 <TextBlock Text="◈" FontSize="20" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
                 <StackPanel>
-                  <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                  <TextBlock Text="Timers start when Land text is seen in Combat Text OCR" Foreground="#66879D" FontSize="10"/>
+                  <TextBlock Text="BUFF TRACKER" Style="{StaticResource SectionLabel}" FontSize="15"
+                             TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Text="Timers start when Land text is seen in Combat Text OCR"
+                             Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
                 </StackPanel>
               </StackPanel>
-              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Style="{StaticResource PanelActionButton}" Tag="＋" Content="Add Buff" Click="AddBuff_Click"/>
                 <Button Style="{StaticResource PanelActionButton}" Tag="✎" Content="Edit" Click="EditBuff_Click"/>
                 <Button Style="{StaticResource PanelActionButton}" Tag="🗑" Content="Delete" Click="DeleteBuff_Click"/>
-                <Button Style="{StaticResource PanelActionButton}" Tag="▶" Content="Test Land" Click="TestLand_Click"
-                        BorderBrush="#2FD8C7" Foreground="#B8F5EE" Background="#22102838"/>
               </StackPanel>
-            </DockPanel>
+            </Grid>
 
             <TextBlock Grid.Row="1" Text="ACTIVE NOW" Style="{StaticResource MetricLabel}" Margin="0,0,0,6"/>
 

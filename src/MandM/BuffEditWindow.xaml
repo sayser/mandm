@@ -70,7 +70,9 @@
           <DockPanel Margin="0,0,0,6">
             <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Padding="12,7"
                     Click="BrowseSound_Click"/>
-            <ComboBox Name="CmbSound" IsEditable="True"/>
+            <ComboBox Name="CmbSound" IsEditable="True"
+                      Foreground="#EDF7FF" Background="#A0092235"
+                      BorderBrush="#42677F"/>
           </DockPanel>
           <TextBlock Text="Built-ins: Beep, Asterisk, Exclamation, Hand, Question — or pick a .wav file."
                      Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
