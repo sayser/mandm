@@ -365,7 +365,7 @@
               </Grid>
 
               <TextBlock Grid.Row="2" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
-                         Text="Matching is case-insensitive on each line’s chosen region. A debuff land phrase matches inside the line; the words before it are the monster. A slain line that names that monster clears it. Any other slain line clears every debuff."/>
+                         Text="Matching is case-insensitive on each line’s chosen region. A debuff with fade text shows the monster until fade or a slain line. Empty fade text only plays the land alert."/>
             </Grid>
           </Border>
         </Grid>

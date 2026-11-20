@@ -46,6 +46,7 @@ public sealed class BuffTrackerService : IDisposable
     {
         _settings = settings;
         InvalidateMatchBaseline();
+        DropUntrackedDebuffs();
     }
 
     /// <summary>
@@ -506,11 +507,24 @@ public sealed class BuffTrackerService : IDisposable
         PostUi(Apply);
     }
 
-    /// <summary>Start or refresh one monster for this debuff and play its alert. No countdown.</summary>
+    /// <summary>
+    /// Play the land alert. A debuff with no fade text is not shown.
+    /// A debuff with fade text is tracked, with the monster name, until fade or slain.
+    /// </summary>
     private void LandDebuff(BuffDefinition def, string monster)
     {
         void Apply()
         {
+            if (string.IsNullOrWhiteSpace(def.FadeText))
+            {
+                _alarms.PlayAlert(
+                    def.AlertMode,
+                    def.AlarmSound,
+                    def.WarnVoiceText,
+                    def.Name);
+                return;
+            }
+
             var existing = ActiveBuffs.FirstOrDefault(b =>
                 b.Definition.Id == def.Id && DebuffPhrase.SameSlot(b.TargetName, monster));
             if (existing is not null)
@@ -529,6 +543,28 @@ public sealed class BuffTrackerService : IDisposable
                 def.AlarmSound,
                 def.WarnVoiceText,
                 def.Name);
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
+    /// <summary>Empty fade text is an alert only, so those rows do not stay on the list or overlay.</summary>
+    private void DropUntrackedDebuffs()
+    {
+        void Apply()
+        {
+            var drop = ActiveBuffs.Where(b =>
+            {
+                if (!b.IsDebuff)
+                    return false;
+                var current = _settings.Buffs.FirstOrDefault(d => d.Id == b.Definition.Id);
+                return current is null || string.IsNullOrWhiteSpace(current.FadeText);
+            }).ToList();
+            if (drop.Count == 0)
+                return;
+            foreach (var buff in drop)
+                ActiveBuffs.Remove(buff);
             Changed?.Invoke();
         }
 

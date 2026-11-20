@@ -120,10 +120,10 @@ public partial class BuffEditWindow : Window
         if (BtnTestFade is not null)
             BtnTestFade.Visibility = debuff ? Visibility.Visible : Visibility.Collapsed;
         LblSubtitle.Text = debuff
-            ? "Land starts tracking and plays the land alert. Fade is optional and has its own alert. Empty fade text stays until a slain line."
+            ? "Land plays the land alert. With fade text, the monster stays on the list until fade or a slain line. With no fade text, only the sound plays."
             : "Land starts or resets the timer. Fade clears it. Warn text alarms immediately. Each line picks a region.";
         LblMatchHint.Text = debuff
-            ? "Land text is a phrase, not the whole line. “looks weak” matches “a bloated plague rat looks weak.” The words in front are the monster. Leave fade text empty for no fade alert. A fade phrase uses the fade alert, not the land voice. Cast text does not play a sound."
+            ? "Land text is a phrase, not the whole line. “looks weak” matches “a bloated plague rat looks weak.” The words in front are the monster, shown only when fade text is set. Leave fade text empty to play the land alert without a row. A fade phrase uses the fade alert, not the land voice."
             : "Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown. Phrases match on word boundaries.";
         LblWarnVoice.Text = debuff ? "LAND VOICE TEXT" : "WARN VOICE TEXT";
         LblVoiceHint.Text = debuff
