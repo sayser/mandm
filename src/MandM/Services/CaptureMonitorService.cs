@@ -196,6 +196,8 @@ public sealed class CaptureMonitorService : IDisposable
                     PublishPreview(named, settings, lines, slot);
                 }
 
+                _tracker.FinishPass();
+
                 var idle = ocrThisPass == 0 && (skippedThisPass > 0 || capturedThisPass == 0);
                 // Unchanged frames skip OCR and wait longer. A changed frame uses the
                 // user's interval. Never spin.
@@ -213,6 +215,7 @@ public sealed class CaptureMonitorService : IDisposable
             }
             catch (Exception ex)
             {
+                try { _tracker.FinishPass(); } catch { /* still report the OCR error */ }
                 SetStatus($"OCR error: {ex.Message}");
                 try { await Task.Delay(1500, ct); } catch { break; }
             }

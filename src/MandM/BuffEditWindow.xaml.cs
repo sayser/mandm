@@ -23,6 +23,11 @@ public partial class BuffEditWindow : Window
         BindRegionCombo(CmbWarnRegion, regions, def.WarnRegionId);
 
         ChkEnabled.IsChecked = def.Enabled;
+        if (def.IsDebuff)
+            KindDebuff.IsChecked = true;
+        else
+            KindBuff.IsChecked = true;
+        ApplyKindUi();
         TxtName.Text = def.Name;
         TxtDurationMin.Text = (def.DurationSeconds / 60.0).ToString("0.##");
         TxtWarnSec.Text = def.WarnSeconds.ToString();
@@ -70,6 +75,33 @@ public partial class BuffEditWindow : Window
 
     private void AlertMode_Changed(object sender, SelectionChangedEventArgs e) => RefreshAlertPanels();
 
+    private void Kind_Changed(object sender, RoutedEventArgs e) => ApplyKindUi();
+
+    private bool IsDebuffKind => KindDebuff?.IsChecked == true;
+
+    private void ApplyKindUi()
+    {
+        if (PanelTiming is null || PanelCast is null || PanelWarn is null)
+            return;
+
+        var debuff = IsDebuffKind;
+        PanelTiming.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
+        PanelCast.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
+        PanelWarn.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
+        LblLand.Text = debuff ? "LAND TEXT (STARTS AND ALERTS)" : "LAND TEXT (STARTS TIMER)";
+        LblFade.Text = debuff ? "FADE TEXT (ALERTS AND CLEARS)" : "FADE TEXT (CLEARS TIMER)";
+        LblSubtitle.Text = debuff
+            ? "A new land line starts it and plays the alert. Fade plays the alert and clears it. A slain line clears it silently."
+            : "Land starts or resets the timer. Fade clears it. Warn text alarms immediately. Each line picks a region.";
+        LblMatchHint.Text = debuff
+            ? "Each line only watches its region dropdown. Combat for effects you cast or that hit you. Point a line at Main only when that text is there. A debuff has no duration and no warn time."
+            : "Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown. Phrases match on word boundaries.";
+        LblWarnVoice.Text = debuff ? "LAND VOICE TEXT" : "WARN VOICE TEXT";
+        LblVoiceHint.Text = debuff
+            ? "Voice is chosen in Options → Spoken alerts. Land speaks the land line. Fade speaks the fade line. Test uses the land line."
+            : "Voice is chosen in Options → Spoken alerts. Test uses the warn line.";
+    }
+
     private void RefreshAlertPanels()
     {
         if (PanelSound is null || PanelVoice is null) return;
@@ -93,12 +125,13 @@ public partial class BuffEditWindow : Window
     {
         if (SelectedAlertMode() == AlertMode.Voice)
         {
-            var name = string.IsNullOrWhiteSpace(TxtName.Text) ? "Buff" : TxtName.Text.Trim();
+            var name = string.IsNullOrWhiteSpace(TxtName.Text) ? "Spell" : TxtName.Text.Trim();
+            var fallback = IsDebuffKind ? name : $"{name} warning";
             App.State.Alarms.PlayAlert(
                 AlertMode.Voice,
                 CmbSound.Text,
                 TxtWarnVoice.Text,
-                $"{name} warning");
+                fallback);
         }
         else
         {
@@ -114,23 +147,38 @@ public partial class BuffEditWindow : Window
             return;
         }
 
-        if (!double.TryParse(TxtDurationMin.Text.Trim(), out var minutes) || minutes <= 0)
+        var debuff = IsDebuffKind;
+        double minutes = 0;
+        var warn = 0;
+        if (!debuff)
         {
-            MessageBox.Show(this, "Duration must be a positive number of minutes.", "MandM",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+            if (!double.TryParse(TxtDurationMin.Text.Trim(), out minutes) || minutes <= 0)
+            {
+                MessageBox.Show(this, "Duration must be a positive number of minutes.", "MandM",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
 
-        if (!int.TryParse(TxtWarnSec.Text.Trim(), out var warn) || warn < 0)
-        {
-            MessageBox.Show(this, "Warn time must be a non-negative number of seconds.", "MandM",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            if (!int.TryParse(TxtWarnSec.Text.Trim(), out warn) || warn < 0)
+            {
+                MessageBox.Show(this, "Warn time must be a non-negative number of seconds.", "MandM",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(TxtLand.Text))
         {
-            MessageBox.Show(this, "Land text is required (starts the timer).", "MandM",
+            MessageBox.Show(this, debuff
+                    ? "Land text is required (starts the debuff and plays the alert)."
+                    : "Land text is required (starts the timer).",
+                "MandM", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (debuff && string.IsNullOrWhiteSpace(TxtFade.Text))
+        {
+            MessageBox.Show(this, "Fade text is required (plays the alert and clears the debuff).", "MandM",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -143,9 +191,13 @@ public partial class BuffEditWindow : Window
         }
 
         Result.Enabled = ChkEnabled.IsChecked == true;
+        Result.Kind = debuff ? SpellKind.Debuff : SpellKind.Buff;
         Result.Name = TxtName.Text.Trim();
-        Result.DurationSeconds = (int)Math.Round(minutes * 60);
-        Result.WarnSeconds = warn;
+        if (!debuff)
+        {
+            Result.DurationSeconds = (int)Math.Round(minutes * 60);
+            Result.WarnSeconds = warn;
+        }
         Result.CastText = TxtCast.Text.Trim();
         Result.LandText = TxtLand.Text.Trim();
         Result.FadeText = TxtFade.Text.Trim();

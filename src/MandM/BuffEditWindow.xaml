@@ -1,7 +1,7 @@
 <Window x:Class="MandM.BuffEditWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Edit Buff"
+        Title="Edit Spell"
         Height="780" Width="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -24,10 +24,18 @@
           <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
             <TextBlock Text="◈" FontSize="22" Foreground="#A98BFF" Margin="0,0,10,0" VerticalAlignment="Center"/>
             <StackPanel>
-              <TextBlock Text="BUFF DEFINITION" Style="{StaticResource SectionLabel}" FontSize="15"/>
-              <TextBlock Text="Land starts timer · Fade clears · Warn text alarms early · each line picks a region"
+              <TextBlock Name="LblTitle" Text="SPELL" Style="{StaticResource SectionLabel}" FontSize="15"/>
+              <TextBlock Name="LblSubtitle" Text="Buff: land starts the timer. Debuff: land and fade each play an alert."
                          Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
             </StackPanel>
+          </StackPanel>
+
+          <TextBlock Text="KIND" Style="{StaticResource DialogLabel}"/>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <RadioButton Name="KindBuff" Content="Buff" GroupName="SpellKind" Margin="0,0,18,0"
+                         Foreground="#EDF7FF" Checked="Kind_Changed"/>
+            <RadioButton Name="KindDebuff" Content="Debuff" GroupName="SpellKind"
+                         Foreground="#EDF7FF" Checked="Kind_Changed"/>
           </StackPanel>
 
           <CheckBox Name="ChkEnabled" Content="Enabled" Margin="0,0,0,12"/>
@@ -35,7 +43,7 @@
           <TextBlock Text="NAME" Style="{StaticResource DialogLabel}"/>
           <TextBox Name="TxtName" Margin="0,0,0,12"/>
 
-          <Grid Margin="0,0,0,12">
+          <Grid Name="PanelTiming" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="12"/>
@@ -57,19 +65,21 @@
             <StackPanel>
               <TextBlock Text="TEXT MATCHES + CAPTURE REGION" Style="{StaticResource MetricLabel}" Margin="0,0,0,10"/>
 
-              <TextBlock Text="CAST TEXT (OPTIONAL)" Style="{StaticResource DialogLabel}"/>
-              <Grid Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="10"/>
-                  <ColumnDefinition Width="160"/>
-                </Grid.ColumnDefinitions>
-                <TextBox Name="TxtCast"/>
-                <ComboBox Grid.Column="2" Name="CmbCastRegion"
-                          DisplayMemberPath="Name" SelectedValuePath="Id"/>
-              </Grid>
+              <StackPanel Name="PanelCast">
+                <TextBlock Text="CAST TEXT (OPTIONAL)" Style="{StaticResource DialogLabel}"/>
+                <Grid Margin="0,0,0,10">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="160"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBox Name="TxtCast"/>
+                  <ComboBox Grid.Column="2" Name="CmbCastRegion"
+                            DisplayMemberPath="Name" SelectedValuePath="Id"/>
+                </Grid>
+              </StackPanel>
 
-              <TextBlock Text="LAND TEXT (STARTS TIMER)" Style="{StaticResource DialogLabel}"/>
+              <TextBlock Name="LblLand" Text="LAND TEXT (STARTS TIMER)" Style="{StaticResource DialogLabel}"/>
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
@@ -81,7 +91,7 @@
                           DisplayMemberPath="Name" SelectedValuePath="Id"/>
               </Grid>
 
-              <TextBlock Text="FADE TEXT (CLEARS TIMER)" Style="{StaticResource DialogLabel}"/>
+              <TextBlock Name="LblFade" Text="FADE TEXT (CLEARS TIMER)" Style="{StaticResource DialogLabel}"/>
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
@@ -93,18 +103,20 @@
                           DisplayMemberPath="Name" SelectedValuePath="Id"/>
               </Grid>
 
-              <TextBlock Text="WARN TEXT (OPTIONAL — ALARMS IMMEDIATELY)" Style="{StaticResource DialogLabel}"/>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="10"/>
-                  <ColumnDefinition Width="160"/>
-                </Grid.ColumnDefinitions>
-                <TextBox Name="TxtWarn"/>
-                <ComboBox Grid.Column="2" Name="CmbWarnRegion"
-                          DisplayMemberPath="Name" SelectedValuePath="Id"/>
-              </Grid>
-              <TextBlock Text="Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown — put fade/warn on the same chat region that shows those messages. Phrases match on word boundaries (fade “You appear” will not steal warn “…appearing”)."
+              <StackPanel Name="PanelWarn">
+                <TextBlock Text="WARN TEXT (OPTIONAL — ALARMS IMMEDIATELY)" Style="{StaticResource DialogLabel}"/>
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="160"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBox Name="TxtWarn"/>
+                  <ComboBox Grid.Column="2" Name="CmbWarnRegion"
+                            DisplayMemberPath="Name" SelectedValuePath="Id"/>
+                </Grid>
+              </StackPanel>
+              <TextBlock Name="LblMatchHint" Text="Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown. Phrases match on word boundaries."
                          Foreground="#66879D" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
           </Border>
@@ -128,13 +140,13 @@
           </StackPanel>
 
           <StackPanel Name="PanelVoice" Visibility="Collapsed">
-            <TextBlock Text="WARN VOICE TEXT" Style="{StaticResource DialogLabel}"/>
+            <TextBlock Name="LblWarnVoice" Text="WARN VOICE TEXT" Style="{StaticResource DialogLabel}"/>
             <TextBox Name="TxtWarnVoice" Margin="0,0,0,10"
-                     ToolTip="Spoken on warn. Empty uses “{buff} warning”."/>
+                     ToolTip="Spoken on warn, or when a debuff lands. Empty uses a short default."/>
             <TextBlock Text="FADE VOICE TEXT" Style="{StaticResource DialogLabel}"/>
             <TextBox Name="TxtFadeVoice" Margin="0,0,0,6"
-                     ToolTip="Spoken on fade. Empty uses “{buff} faded”."/>
-            <TextBlock Text="Voice is chosen in Options → Spoken alerts. Test uses the warn line."
+                     ToolTip="Spoken on fade. Empty uses “{name} faded”."/>
+            <TextBlock Name="LblVoiceHint" Text="Voice is chosen in Options → Spoken alerts. Test uses the warn line."
                        Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
           </StackPanel>
         </StackPanel>

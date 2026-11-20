@@ -15,6 +15,10 @@ public sealed class BuffTrackerService : IDisposable
     private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
+    /// <summary>Slain-line counts from the previous poll, per capture region.</summary>
+    private Dictionary<string, int> _previousSlainCounts = new(StringComparer.Ordinal);
+    /// <summary>A newly appeared slain line this OCR pass should clear debuffs after every region.</summary>
+    private bool _clearDebuffsOnPassEnd;
     /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
     private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
@@ -53,6 +57,8 @@ public sealed class BuffTrackerService : IDisposable
             _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousWarnCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _previousSlainCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _clearDebuffsOnPassEnd = false;
             _armedFromCast.Clear();
         }
     }
@@ -92,6 +98,12 @@ public sealed class BuffTrackerService : IDisposable
 
         foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
         {
+            if (def.IsDebuff)
+            {
+                ApplyDebuffLines(regionId, entries, blob, def, fireEvents);
+                continue;
+            }
+
             // Order: cast → land → warn → fade.
             // Warn before fade so a warn line that also loosely resembles fade still alarms
             // before any clear, and fade uses specificity against warn/land/cast.
@@ -163,6 +175,85 @@ public sealed class BuffTrackerService : IDisposable
                     FadeBuff(def);
             }
         }
+
+        NoteSlainLines(regionId, entries, fireEvents);
+    }
+
+    /// <summary>
+    /// Debuffs have no countdown and no warn. A new land line starts tracking and plays
+    /// the alert. A new fade line plays the alert and clears. Cast and warn text are ignored.
+    /// </summary>
+    private void ApplyDebuffLines(
+        string regionId,
+        List<string> entries,
+        string blob,
+        BuffDefinition def,
+        bool fireEvents)
+    {
+        if (RegionEquals(def.LandRegionId, regionId))
+        {
+            var landNow = CountPhraseMatches(entries, blob, def, def.LandText);
+            int landWas;
+            bool newLand;
+            lock (_gate)
+            {
+                landWas = _previousLandCounts.GetValueOrDefault(def.Id);
+                _previousLandCounts[def.Id] = landNow;
+                newLand = fireEvents && _acceptMatchEvents && landNow > landWas;
+            }
+
+            if (newLand)
+                LandDebuff(def);
+        }
+
+        if (RegionEquals(def.FadeRegionId, regionId))
+        {
+            var fadeNow = CountPhraseMatches(entries, blob, def, def.FadeText);
+            int fadeWas;
+            bool allow;
+            lock (_gate)
+            {
+                fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
+                _previousFadeCounts[def.Id] = fadeNow;
+                allow = fireEvents && _acceptMatchEvents;
+            }
+
+            if (allow && fadeNow > fadeWas)
+                FadeBuff(def);
+        }
+    }
+
+    /// <summary>
+    /// Same slain rule as the fight tracker, including a party member's kill.
+    /// Only a count increase counts, so a line still on screen does not clear again.
+    /// The actual clear waits until the pass finishes so a land in a later region
+    /// of the same pass does not stick.
+    /// </summary>
+    private void NoteSlainLines(string regionId, List<string> entries, bool fireEvents)
+    {
+        var joined = DamageLineParser.JoinWrapped(entries);
+        var slainNow = joined.Count(DamageLineParser.IsSlainLine);
+        lock (_gate)
+        {
+            var slainWas = _previousSlainCounts.GetValueOrDefault(regionId);
+            _previousSlainCounts[regionId] = slainNow;
+            if (fireEvents && _acceptMatchEvents && slainNow > slainWas)
+                _clearDebuffsOnPassEnd = true;
+        }
+    }
+
+    /// <summary>Call after every capture region in one OCR pass has been applied.</summary>
+    public void FinishPass()
+    {
+        bool clear;
+        lock (_gate)
+        {
+            clear = _clearDebuffsOnPassEnd && _acceptMatchEvents;
+            _clearDebuffsOnPassEnd = false;
+        }
+
+        if (clear)
+            ClearDebuffsSilent();
     }
 
     /// <summary>
@@ -215,10 +306,10 @@ public sealed class BuffTrackerService : IDisposable
 
     private static IEnumerable<string> PhrasesOf(BuffDefinition def)
     {
-        if (!string.IsNullOrWhiteSpace(def.CastText)) yield return def.CastText;
+        if (!def.IsDebuff && !string.IsNullOrWhiteSpace(def.CastText)) yield return def.CastText;
         if (!string.IsNullOrWhiteSpace(def.LandText)) yield return def.LandText;
         if (!string.IsNullOrWhiteSpace(def.FadeText)) yield return def.FadeText;
-        if (!string.IsNullOrWhiteSpace(def.WarnText)) yield return def.WarnText;
+        if (!def.IsDebuff && !string.IsNullOrWhiteSpace(def.WarnText)) yield return def.WarnText;
     }
 
     private void TriggerWarnFromText(BuffDefinition def)
@@ -255,6 +346,21 @@ public sealed class BuffTrackerService : IDisposable
                 def.AlarmSound,
                 def.FadeVoiceText,
                 $"{def.Name} faded");
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
+    private void ClearDebuffsSilent()
+    {
+        void Apply()
+        {
+            var debuffs = ActiveBuffs.Where(b => b.IsDebuff).ToList();
+            if (debuffs.Count == 0)
+                return;
+            foreach (var buff in debuffs)
+                ActiveBuffs.Remove(buff);
             Changed?.Invoke();
         }
 
@@ -305,6 +411,33 @@ public sealed class BuffTrackerService : IDisposable
         PostUi(Apply);
     }
 
+    /// <summary>Start or refresh a debuff and play its alert. No countdown.</summary>
+    private void LandDebuff(BuffDefinition def)
+    {
+        void Apply()
+        {
+            var existing = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            if (existing is not null)
+                ActiveBuffs.Remove(existing);
+
+            ActiveBuffs.Add(new ActiveBuff
+            {
+                Definition = def,
+                LandedAtUtc = DateTime.UtcNow,
+                Remaining = TimeSpan.MaxValue,
+                Warned = false
+            });
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.WarnVoiceText,
+                def.Name);
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
     public void ClearBuff(string buffId)
     {
         void Apply()
@@ -318,8 +451,14 @@ public sealed class BuffTrackerService : IDisposable
         PostUi(Apply);
     }
 
-    /// <summary>Manual test helper — lands a buff without OCR.</summary>
-    public void TestLand(BuffDefinition def) => LandBuff(def);
+    /// <summary>Manual test helper — lands a spell without OCR.</summary>
+    public void TestLand(BuffDefinition def)
+    {
+        if (def.IsDebuff)
+            LandDebuff(def);
+        else
+            LandBuff(def);
+    }
 
     private static void PostUi(Action apply)
     {
@@ -335,6 +474,9 @@ public sealed class BuffTrackerService : IDisposable
         var now = DateTime.UtcNow;
         foreach (var buff in ActiveBuffs.ToList())
         {
+            if (buff.IsDebuff)
+                continue;
+
             var elapsed = now - buff.LandedAtUtc;
             var remaining = TimeSpan.FromSeconds(buff.Definition.DurationSeconds) - elapsed;
             buff.Remaining = remaining;
@@ -355,7 +497,7 @@ public sealed class BuffTrackerService : IDisposable
             }
         }
 
-        var expired = ActiveBuffs.Where(b => b.Remaining <= TimeSpan.Zero).ToList();
+        var expired = ActiveBuffs.Where(b => !b.IsDebuff && b.Remaining <= TimeSpan.Zero).ToList();
         if (expired.Count == 0) return;
         foreach (var buff in expired)
             ActiveBuffs.Remove(buff);

@@ -1,8 +1,17 @@
 namespace MandM.Models;
 
+public enum SpellKind
+{
+    Buff = 0,
+    Debuff = 1
+}
+
 public sealed class BuffDefinition
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Missing on older saves, so those spells stay buffs.</summary>
+    public SpellKind Kind { get; set; } = SpellKind.Buff;
+    public bool IsDebuff => Kind == SpellKind.Debuff;
     public string Name { get; set; } = string.Empty;
     /// <summary>Full buff duration in seconds.</summary>
     public int DurationSeconds { get; set; }
@@ -31,14 +40,18 @@ public sealed class BuffDefinition
     public bool Enabled { get; set; } = true;
 
     public string DurationDisplay =>
-        DurationSeconds >= 60
-            ? $"{DurationSeconds / 60.0:0.#}m"
-            : $"{DurationSeconds}s";
+        IsDebuff
+            ? "Debuff"
+            : DurationSeconds >= 60
+                ? $"{DurationSeconds / 60.0:0.#}m"
+                : $"{DurationSeconds}s";
 
     public string WarnDisplay =>
-        string.IsNullOrWhiteSpace(WarnText)
-            ? $"{WarnSeconds}s"
-            : "text";
+        IsDebuff
+            ? "—"
+            : string.IsNullOrWhiteSpace(WarnText)
+                ? $"{WarnSeconds}s"
+                : "text";
 
     public string AlertDisplay =>
         AlertModeOptions.Normalize(AlertMode) == AlertMode.Voice ? "Voice" : AlarmSound;
@@ -48,6 +61,7 @@ public sealed class BuffDefinition
     public BuffDefinition Clone() => new()
     {
         Id = Id,
+        Kind = Kind,
         Name = Name,
         DurationSeconds = DurationSeconds,
         WarnSeconds = WarnSeconds,

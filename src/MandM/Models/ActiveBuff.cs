@@ -37,10 +37,14 @@ public sealed class ActiveBuff : INotifyPropertyChanged
     }
 
     public string Name => Definition.Name;
+    public bool IsDebuff => Definition.IsDebuff;
+
     public string RemainingDisplay
     {
         get
         {
+            if (IsDebuff)
+                return "Debuff";
             var t = Remaining < TimeSpan.Zero ? TimeSpan.Zero : Remaining;
             return t.TotalHours >= 1
                 ? $"{(int)t.TotalHours}:{t.Minutes:D2}:{t.Seconds:D2}"
@@ -49,7 +53,8 @@ public sealed class ActiveBuff : INotifyPropertyChanged
     }
 
     public bool IsWarning =>
-        Remaining > TimeSpan.Zero
+        !IsDebuff
+        && Remaining > TimeSpan.Zero
         && (Warned
             || (string.IsNullOrWhiteSpace(Definition.WarnText)
                 && Remaining.TotalSeconds <= Definition.WarnSeconds));
@@ -59,7 +64,7 @@ public sealed class ActiveBuff : INotifyPropertyChanged
     {
         get
         {
-            if (Definition.DurationSeconds <= 0) return 0;
+            if (IsDebuff || Definition.DurationSeconds <= 0) return 0;
             var ratio = Remaining.TotalSeconds / Definition.DurationSeconds;
             return Math.Clamp(ratio, 0, 1);
         }

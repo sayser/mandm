@@ -210,6 +210,16 @@
                                              Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
                                   <ProgressBar Height="3" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
                                                Margin="0,6,0,0" BorderThickness="0" Background="#22081420">
+                                    <ProgressBar.Style>
+                                      <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsDebuff}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </ProgressBar.Style>
                                     <ProgressBar.Foreground>
                                       <SolidColorBrush Color="#A98BFF"/>
                                     </ProgressBar.Foreground>
@@ -342,7 +352,7 @@
               </Grid>
 
               <TextBlock Grid.Row="2" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
-                         Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set."/>
+                         Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set. A debuff stays until its fade line, or until a slain line, with no countdown."/>
             </Grid>
           </Border>
         </Grid>
