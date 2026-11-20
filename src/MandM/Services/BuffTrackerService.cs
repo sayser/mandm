@@ -15,9 +15,12 @@ public sealed class BuffTrackerService : IDisposable
     private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
-    /// <summary>Canonical debuff land lines still on screen, per spell id.</summary>
+    /// <summary>
+    /// Land sights still on screen, per spell. Not cleared when a fight ends.
+    /// A sight drops out only when that line leaves the capture.
+    /// </summary>
     private readonly Dictionary<string, HashSet<string>> _seenDebuffLand = new(StringComparer.Ordinal);
-    /// <summary>Canonical debuff fade lines still on screen, per spell id.</summary>
+    /// <summary>Fade sights still on screen, per spell. Same lifetime as land sights.</summary>
     private readonly Dictionary<string, HashSet<string>> _seenDebuffFade = new(StringComparer.Ordinal);
     /// <summary>Canonical slain lines still on screen, per capture region.</summary>
     private readonly Dictionary<string, HashSet<string>> _seenSlain = new(StringComparer.Ordinal);
@@ -202,25 +205,19 @@ public sealed class BuffTrackerService : IDisposable
 
         if (RegionEquals(def.LandRegionId, regionId))
         {
-            var matched = MatchingDebuffLines(entries, def.LandText, PeerPhrases(def, def.LandText));
-            var fresh = TakeFresh(def.Id, matched, _seenDebuffLand, fireEvents);
-            foreach (var line in fresh)
-            {
-                if (DebuffPhrase.TryRead(line, def.LandText, PeerPhrases(def, def.LandText), out var monster))
-                    LandDebuff(def, monster);
-            }
+            var visible = ReadSights(entries, def.LandText, PeerPhrases(def, def.LandText));
+            var fresh = TakeFreshSights(def.Id, visible, def.LandText, _seenDebuffLand, fireEvents);
+            foreach (var sight in fresh)
+                LandDebuff(def, sight.Monster);
         }
 
         if (!string.IsNullOrWhiteSpace(def.FadeText) && RegionEquals(def.FadeRegionId, regionId))
         {
-            var matched = MatchingDebuffLines(entries, def.FadeText, PeerPhrases(def, def.FadeText));
-            var fresh = TakeFresh(def.Id, matched, _seenDebuffFade, fireEvents);
+            var visible = ReadSights(entries, def.FadeText, PeerPhrases(def, def.FadeText));
+            var fresh = TakeFreshSights(def.Id, visible, def.FadeText, _seenDebuffFade, fireEvents);
             var monsters = new List<string>();
-            foreach (var line in fresh)
-            {
-                if (DebuffPhrase.TryRead(line, def.FadeText, PeerPhrases(def, def.FadeText), out var monster))
-                    monsters.Add(monster);
-            }
+            foreach (var sight in fresh)
+                monsters.Add(sight.Monster);
 
             if (monsters.Count == 0)
                 return;
@@ -240,22 +237,22 @@ public sealed class BuffTrackerService : IDisposable
         }
     }
 
-    private static List<string> MatchingDebuffLines(
+    private static List<DebuffPhrase.DebuffSight> ReadSights(
         List<string> entries,
         string? phrase,
         IEnumerable<string> peers)
     {
-        var matched = new List<string>();
+        var sights = new List<DebuffPhrase.DebuffSight>();
         if (string.IsNullOrWhiteSpace(phrase))
-            return matched;
+            return sights;
 
         foreach (var line in entries)
         {
-            if (DebuffPhrase.TryRead(line, phrase, peers, out _))
-                matched.Add(line);
+            if (DebuffPhrase.TryRead(line, phrase, peers, out var monster))
+                sights.Add(new DebuffPhrase.DebuffSight(line, monster));
         }
 
-        return matched;
+        return sights;
     }
 
     private static IEnumerable<string> PeerPhrases(BuffDefinition def, string? phrase)
@@ -268,9 +265,10 @@ public sealed class BuffTrackerService : IDisposable
             yield return def.FadeText;
     }
 
-    private List<string> TakeFresh(
+    private List<DebuffPhrase.DebuffSight> TakeFreshSights(
         string spellId,
-        List<string> matched,
+        List<DebuffPhrase.DebuffSight> visible,
+        string? phrase,
         Dictionary<string, HashSet<string>> store,
         bool fireEvents)
     {
@@ -282,7 +280,7 @@ public sealed class BuffTrackerService : IDisposable
                 store[spellId] = seen;
             }
 
-            var fresh = DebuffPhrase.FreshLines(seen, matched);
+            var fresh = DebuffPhrase.FreshSights(seen, visible, phrase);
             if (!fireEvents || !_acceptMatchEvents)
                 return [];
             return fresh;
@@ -528,7 +526,7 @@ public sealed class BuffTrackerService : IDisposable
             var existing = ActiveBuffs.FirstOrDefault(b =>
                 b.Definition.Id == def.Id && DebuffPhrase.SameSlot(b.TargetName, monster));
             if (existing is not null)
-                ActiveBuffs.Remove(existing);
+                return;
 
             ActiveBuffs.Add(new ActiveBuff
             {

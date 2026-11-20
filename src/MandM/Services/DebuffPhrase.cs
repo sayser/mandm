@@ -86,6 +86,47 @@ public static class DebuffPhrase
     /// <summary>Same debuff slot: one unnamed row, or one row per monster.</summary>
     public static bool SameSlot(string? tracked, string? named) => Key(tracked) == Key(named);
 
+    public readonly record struct DebuffSight(string Line, string Monster);
+
+    /// <summary>
+    /// Stable identity for one visible land or fade. Punctuation and a leading article
+    /// do not make a new sight. Text after the phrase does not either.
+    /// </summary>
+    public static string SightKey(string? phrase, string? monster)
+    {
+        var phraseKey = DamageLineParser.Canonical(phrase);
+        if (phraseKey.Length == 0)
+            return string.Empty;
+        var monsterKey = Key(monster);
+        return monsterKey.Length == 0 ? phraseKey : phraseKey + " " + monsterKey;
+    }
+
+    /// <summary>
+    /// Sights whose phrase and monster were not already visible.
+    /// <paramref name="previous"/> becomes whatever is still on screen.
+    /// A fight ending does not belong here: only a line that left the capture drops out.
+    /// </summary>
+    public static List<DebuffSight> FreshSights(
+        HashSet<string> previous,
+        IEnumerable<DebuffSight> visible,
+        string? phrase)
+    {
+        var current = new HashSet<string>(StringComparer.Ordinal);
+        var fresh = new List<DebuffSight>();
+        foreach (var sight in visible)
+        {
+            var key = SightKey(phrase, sight.Monster);
+            if (key.Length == 0 || !current.Add(key))
+                continue;
+            if (!previous.Contains(key))
+                fresh.Add(sight);
+        }
+
+        previous.Clear();
+        previous.UnionWith(current);
+        return fresh;
+    }
+
     /// <summary>
     /// Lines whose canonical text was not in <paramref name="previous"/>.
     /// <paramref name="previous"/> becomes the lines still visible.

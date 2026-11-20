@@ -344,6 +344,43 @@ held.ApplyFrame(
 Check("the next hit after a hold starts a new fight",
     held.Tracking && held.DamageDealt == 10 && held.SlainBy.Length == 0);
 
+var landMemory = new HashSet<string>(StringComparer.Ordinal);
+List<DebuffPhrase.DebuffSight> LandRead(params string[] lines)
+{
+    var sights = new List<DebuffPhrase.DebuffSight>();
+    foreach (var line in lines)
+    {
+        if (DebuffPhrase.TryRead(line, landPhrase, null, out var monster))
+            sights.Add(new DebuffPhrase.DebuffSight(line, monster));
+    }
+
+    return DebuffPhrase.FreshSights(landMemory, sights, landPhrase);
+}
+
+var landOnce = LandRead("a bloated plague rat looks weak.");
+var landStill = LandRead("a bloated plague rat looks weak.");
+var landStillAgain = LandRead("a bloated plague rat looks weak.");
+Check("screenshot land line alerts once and not on the next two reads",
+    landOnce.Count == 1
+    && landOnce[0].Monster == "a bloated plague rat"
+    && landStill.Count == 0
+    && landStillAgain.Count == 0);
+Check("a punctuation re-read of that land line does not alert",
+    LandRead("a bloated plague rat looks weak!").Count == 0);
+Check("a slain line does not clear the land alert memory",
+    LandRead("a bloated plague rat looks weak.", "You have slain a bloated plague rat!").Count == 0);
+var secondMonster = LandRead(
+    "a bloated plague rat looks weak.",
+    "a crystal dervish looks weak.");
+Check("a different monster alerts once while the first line stays",
+    secondMonster.Count == 1 && secondMonster[0].Monster == "a crystal dervish");
+Check("that second monster does not alert on the next read",
+    LandRead("a bloated plague rat looks weak.", "a crystal dervish looks weak.").Count == 0);
+LandRead();
+var landReturned = LandRead("a bloated plague rat looks weak.");
+Check("the land line alerts again only after it leaves",
+    landReturned.Count == 1 && landReturned[0].Monster == "a bloated plague rat");
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");
