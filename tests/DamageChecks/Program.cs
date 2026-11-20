@@ -284,6 +284,48 @@ still.ApplyFrame(
 Check("a new party slain line ends the fight",
     !still.Tracking && still.SlainBy == "Andromocles" && still.DamageDealt == 470);
 
+const string landPhrase = "looks weak";
+const string ratLine = "a bloated plague rat looks weak.";
+Check("land phrase matches inside the rat line",
+    DebuffPhrase.TryRead(ratLine, landPhrase, null, out var ratMonster)
+    && ratMonster == "a bloated plague rat");
+Check("land phrase does not match a longer word",
+    !DebuffPhrase.TryRead("a bloated plague rat looks weaker.", landPhrase, null, out _));
+Check("land phrase does not claim a longer fade phrase",
+    !DebuffPhrase.TryRead(
+        "a bloated plague rat no longer looks weak.",
+        landPhrase,
+        ["no longer looks weak"],
+        out _));
+Check("fade phrase keeps the monster in front",
+    DebuffPhrase.TryRead(
+        "a bloated plague rat no longer looks weak.",
+        "no longer looks weak",
+        [landPhrase],
+        out var fadedMonster)
+    && fadedMonster == "a bloated plague rat");
+Check("cast line is not a land",
+    !DebuffPhrase.TryRead("You begin casting Greater Hex of Enfeeblement.", landPhrase, null, out _));
+Check("article differences are the same monster",
+    DebuffPhrase.SameMonster("a bloated plague rat", "the bloated plague rat"));
+Check("a different monster is not the same",
+    !DebuffPhrase.SameMonster("a bloated plague rat", "a crystal dervish"));
+DamageLineParser.TryParseSlain("You have slain a bloated plague rat!", out var slainRat);
+Check("slain names the monster in front of the land phrase",
+    DebuffPhrase.SameMonster(ratMonster, slainRat));
+DamageLineParser.TryParseSlain(
+    "Your party member Andromocles has slain a bloated plague rat!",
+    out var partyRat);
+Check("a party slain names that same monster",
+    DebuffPhrase.SameMonster("a bloated plague rat", partyRat));
+var seen = new HashSet<string>(StringComparer.Ordinal);
+var firstSight = DebuffPhrase.FreshLines(seen, [ratLine, "You begin casting Greater Hex of Enfeeblement."]);
+var stillVisible = DebuffPhrase.FreshLines(seen, [ratLine]);
+var secondMob = DebuffPhrase.FreshLines(seen, [ratLine, "a crystal dervish looks weak."]);
+Check("a new land line is fresh and a still-visible line is not",
+    firstSight.Count == 2 && stillVisible.Count == 0 && secondMob.Count == 1
+    && secondMob[0].Contains("crystal dervish", StringComparison.Ordinal));
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");

@@ -15,10 +15,14 @@ public sealed class BuffTrackerService : IDisposable
     private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
     private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
-    /// <summary>Slain-line counts from the previous poll, per capture region.</summary>
-    private Dictionary<string, int> _previousSlainCounts = new(StringComparer.Ordinal);
-    /// <summary>A newly appeared slain line this OCR pass should clear debuffs after every region.</summary>
-    private bool _clearDebuffsOnPassEnd;
+    /// <summary>Canonical debuff land lines still on screen, per spell id.</summary>
+    private readonly Dictionary<string, HashSet<string>> _seenDebuffLand = new(StringComparer.Ordinal);
+    /// <summary>Canonical debuff fade lines still on screen, per spell id.</summary>
+    private readonly Dictionary<string, HashSet<string>> _seenDebuffFade = new(StringComparer.Ordinal);
+    /// <summary>Canonical slain lines still on screen, per capture region.</summary>
+    private readonly Dictionary<string, HashSet<string>> _seenSlain = new(StringComparer.Ordinal);
+    /// <summary>Newly appeared slain lines this OCR pass. Cleared after every region is applied.</summary>
+    private readonly List<string> _newSlainThisPass = [];
     /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
     private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
@@ -57,8 +61,10 @@ public sealed class BuffTrackerService : IDisposable
             _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             _previousWarnCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            _previousSlainCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            _clearDebuffsOnPassEnd = false;
+            _seenDebuffLand.Clear();
+            _seenDebuffFade.Clear();
+            _seenSlain.Clear();
+            _newSlainThisPass.Clear();
             _armedFromCast.Clear();
         }
     }
@@ -180,8 +186,9 @@ public sealed class BuffTrackerService : IDisposable
     }
 
     /// <summary>
-    /// Debuffs have no countdown and no warn. A new land line starts tracking and plays
-    /// the alert. A new fade line plays the alert and clears. Cast and warn text are ignored.
+    /// Debuffs have no countdown and no warn. Cast text is stored and does not alert.
+    /// A new land line starts that monster and plays the alert. A new fade line plays
+    /// once and clears the named monster, or every copy when the fade line has no name.
     /// </summary>
     private void ApplyDebuffLines(
         string regionId,
@@ -190,70 +197,132 @@ public sealed class BuffTrackerService : IDisposable
         BuffDefinition def,
         bool fireEvents)
     {
+        _ = blob;
+
         if (RegionEquals(def.LandRegionId, regionId))
         {
-            var landNow = CountPhraseMatches(entries, blob, def, def.LandText);
-            int landWas;
-            bool newLand;
-            lock (_gate)
+            var matched = MatchingDebuffLines(entries, def.LandText, PeerPhrases(def, def.LandText));
+            var fresh = TakeFresh(def.Id, matched, _seenDebuffLand, fireEvents);
+            foreach (var line in fresh)
             {
-                landWas = _previousLandCounts.GetValueOrDefault(def.Id);
-                _previousLandCounts[def.Id] = landNow;
-                newLand = fireEvents && _acceptMatchEvents && landNow > landWas;
+                if (DebuffPhrase.TryRead(line, def.LandText, PeerPhrases(def, def.LandText), out var monster))
+                    LandDebuff(def, monster);
             }
-
-            if (newLand)
-                LandDebuff(def);
         }
 
         if (RegionEquals(def.FadeRegionId, regionId))
         {
-            var fadeNow = CountPhraseMatches(entries, blob, def, def.FadeText);
-            int fadeWas;
-            bool allow;
-            lock (_gate)
+            var matched = MatchingDebuffLines(entries, def.FadeText, PeerPhrases(def, def.FadeText));
+            var fresh = TakeFresh(def.Id, matched, _seenDebuffFade, fireEvents);
+            var monsters = new List<string>();
+            foreach (var line in fresh)
             {
-                fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
-                _previousFadeCounts[def.Id] = fadeNow;
-                allow = fireEvents && _acceptMatchEvents;
+                if (DebuffPhrase.TryRead(line, def.FadeText, PeerPhrases(def, def.FadeText), out var monster))
+                    monsters.Add(monster);
             }
 
-            if (allow && fadeNow > fadeWas)
-                FadeBuff(def);
+            if (monsters.Count == 0)
+                return;
+
+            if (monsters.Any(string.IsNullOrWhiteSpace))
+            {
+                FadeDebuffCopies(def, all: true, monster: string.Empty);
+                return;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var monster in monsters)
+            {
+                if (seen.Add(DebuffPhrase.Key(monster)))
+                    FadeDebuffCopies(def, all: false, monster: monster);
+            }
+        }
+    }
+
+    private static List<string> MatchingDebuffLines(
+        List<string> entries,
+        string? phrase,
+        IEnumerable<string> peers)
+    {
+        var matched = new List<string>();
+        if (string.IsNullOrWhiteSpace(phrase))
+            return matched;
+
+        foreach (var line in entries)
+        {
+            if (DebuffPhrase.TryRead(line, phrase, peers, out _))
+                matched.Add(line);
+        }
+
+        return matched;
+    }
+
+    private static IEnumerable<string> PeerPhrases(BuffDefinition def, string? phrase)
+    {
+        if (!string.IsNullOrWhiteSpace(def.LandText)
+            && !string.Equals(def.LandText, phrase, StringComparison.OrdinalIgnoreCase))
+            yield return def.LandText;
+        if (!string.IsNullOrWhiteSpace(def.FadeText)
+            && !string.Equals(def.FadeText, phrase, StringComparison.OrdinalIgnoreCase))
+            yield return def.FadeText;
+    }
+
+    private List<string> TakeFresh(
+        string spellId,
+        List<string> matched,
+        Dictionary<string, HashSet<string>> store,
+        bool fireEvents)
+    {
+        lock (_gate)
+        {
+            if (!store.TryGetValue(spellId, out var seen))
+            {
+                seen = new HashSet<string>(StringComparer.Ordinal);
+                store[spellId] = seen;
+            }
+
+            var fresh = DebuffPhrase.FreshLines(seen, matched);
+            if (!fireEvents || !_acceptMatchEvents)
+                return [];
+            return fresh;
         }
     }
 
     /// <summary>
     /// Same slain rule as the fight tracker, including a party member's kill.
-    /// Only a count increase counts, so a line still on screen does not clear again.
-    /// The actual clear waits until the pass finishes so a land in a later region
-    /// of the same pass does not stick.
+    /// Only a line that was not already on screen counts. The clear waits until the
+    /// pass finishes so a land in a later region of the same pass does not stick.
     /// </summary>
     private void NoteSlainLines(string regionId, List<string> entries, bool fireEvents)
     {
         var joined = DamageLineParser.JoinWrapped(entries);
-        var slainNow = joined.Count(DamageLineParser.IsSlainLine);
+        var slain = joined.Where(DamageLineParser.IsSlainLine).ToList();
         lock (_gate)
         {
-            var slainWas = _previousSlainCounts.GetValueOrDefault(regionId);
-            _previousSlainCounts[regionId] = slainNow;
-            if (fireEvents && _acceptMatchEvents && slainNow > slainWas)
-                _clearDebuffsOnPassEnd = true;
+            if (!_seenSlain.TryGetValue(regionId, out var seen))
+            {
+                seen = new HashSet<string>(StringComparer.Ordinal);
+                _seenSlain[regionId] = seen;
+            }
+
+            var fresh = DebuffPhrase.FreshLines(seen, slain);
+            if (fireEvents && _acceptMatchEvents)
+                _newSlainThisPass.AddRange(fresh);
         }
     }
 
     /// <summary>Call after every capture region in one OCR pass has been applied.</summary>
     public void FinishPass()
     {
-        bool clear;
+        List<string> slain;
         lock (_gate)
         {
-            clear = _clearDebuffsOnPassEnd && _acceptMatchEvents;
-            _clearDebuffsOnPassEnd = false;
+            slain = _newSlainThisPass.ToList();
+            _newSlainThisPass.Clear();
         }
 
-        if (clear)
-            ClearDebuffsSilent();
+        if (slain.Count > 0)
+            ClearDebuffsForSlain(slain);
     }
 
     /// <summary>
@@ -352,16 +421,42 @@ public sealed class BuffTrackerService : IDisposable
         PostUi(Apply);
     }
 
-    private void ClearDebuffsSilent()
+    private void ClearDebuffsForSlain(IReadOnlyList<string> slainLines)
     {
         void Apply()
         {
-            var debuffs = ActiveBuffs.Where(b => b.IsDebuff).ToList();
-            if (debuffs.Count == 0)
+            var tracked = ActiveBuffs.Where(b => b.IsDebuff).Select(b => b.TargetName).ToList();
+            if (tracked.Count == 0)
                 return;
-            foreach (var buff in debuffs)
-                ActiveBuffs.Remove(buff);
-            Changed?.Invoke();
+
+            var changed = false;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var line in slainLines)
+            {
+                var key = DamageLineParser.Canonical(line);
+                if (key.Length == 0 || !seen.Add(key))
+                    continue;
+
+                DamageLineParser.TryParseSlain(line, out _, out var target);
+                if (tracked.Any(name => DebuffPhrase.SameMonster(name, target)))
+                {
+                    var named = ActiveBuffs
+                        .Where(b => b.IsDebuff && DebuffPhrase.SameMonster(b.TargetName, target))
+                        .ToList();
+                    foreach (var buff in named)
+                        ActiveBuffs.Remove(buff);
+                    changed |= named.Count > 0;
+                    continue;
+                }
+
+                var all = ActiveBuffs.Where(b => b.IsDebuff).ToList();
+                foreach (var buff in all)
+                    ActiveBuffs.Remove(buff);
+                changed |= all.Count > 0;
+            }
+
+            if (changed)
+                Changed?.Invoke();
         }
 
         PostUi(Apply);
@@ -411,18 +506,20 @@ public sealed class BuffTrackerService : IDisposable
         PostUi(Apply);
     }
 
-    /// <summary>Start or refresh a debuff and play its alert. No countdown.</summary>
-    private void LandDebuff(BuffDefinition def)
+    /// <summary>Start or refresh one monster for this debuff and play its alert. No countdown.</summary>
+    private void LandDebuff(BuffDefinition def, string monster)
     {
         void Apply()
         {
-            var existing = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == def.Id);
+            var existing = ActiveBuffs.FirstOrDefault(b =>
+                b.Definition.Id == def.Id && DebuffPhrase.SameSlot(b.TargetName, monster));
             if (existing is not null)
                 ActiveBuffs.Remove(existing);
 
             ActiveBuffs.Add(new ActiveBuff
             {
                 Definition = def,
+                TargetName = monster.Trim(),
                 LandedAtUtc = DateTime.UtcNow,
                 Remaining = TimeSpan.MaxValue,
                 Warned = false
@@ -432,6 +529,34 @@ public sealed class BuffTrackerService : IDisposable
                 def.AlarmSound,
                 def.WarnVoiceText,
                 def.Name);
+            Changed?.Invoke();
+        }
+
+        PostUi(Apply);
+    }
+
+    /// <summary>
+    /// Fade one monster, or every copy of this debuff when the fade line names nobody.
+    /// The alert plays once.
+    /// </summary>
+    private void FadeDebuffCopies(BuffDefinition def, bool all, string monster)
+    {
+        void Apply()
+        {
+            var doomed = ActiveBuffs.Where(b =>
+                b.IsDebuff
+                && b.Definition.Id == def.Id
+                && (all || DebuffPhrase.SameMonster(b.TargetName, monster))).ToList();
+            if (doomed.Count == 0)
+                return;
+
+            foreach (var buff in doomed)
+                ActiveBuffs.Remove(buff);
+            _alarms.PlayAlert(
+                def.AlertMode,
+                def.AlarmSound,
+                def.FadeVoiceText,
+                $"{def.Name} faded");
             Changed?.Invoke();
         }
 
@@ -455,7 +580,7 @@ public sealed class BuffTrackerService : IDisposable
     public void TestLand(BuffDefinition def)
     {
         if (def.IsDebuff)
-            LandDebuff(def);
+            LandDebuff(def, string.Empty);
         else
             LandBuff(def);
     }

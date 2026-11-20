@@ -66,7 +66,7 @@
               <TextBlock Text="TEXT MATCHES + CAPTURE REGION" Style="{StaticResource MetricLabel}" Margin="0,0,0,10"/>
 
               <StackPanel Name="PanelCast">
-                <TextBlock Text="CAST TEXT (OPTIONAL)" Style="{StaticResource DialogLabel}"/>
+                <TextBlock Name="LblCast" Text="CAST TEXT (OPTIONAL)" Style="{StaticResource DialogLabel}"/>
                 <Grid Margin="0,0,0,10">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>

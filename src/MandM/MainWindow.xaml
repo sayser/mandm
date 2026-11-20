@@ -208,6 +208,19 @@
                                 <StackPanel VerticalAlignment="Center">
                                   <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
                                              Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
+                                  <TextBlock Text="{Binding TargetName}" FontSize="11" Foreground="#39E0CC"
+                                             Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                      <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding TargetName}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </TextBlock.Style>
+                                  </TextBlock>
                                   <ProgressBar Height="3" Minimum="0" Maximum="1" Value="{Binding Progress, Mode=OneWay}"
                                                Margin="0,6,0,0" BorderThickness="0" Background="#22081420">
                                     <ProgressBar.Style>
@@ -352,7 +365,7 @@
               </Grid>
 
               <TextBlock Grid.Row="2" Margin="0,8,0,0" FontSize="10" Foreground="#66879D"
-                         Text="Matching is case-insensitive contains on each line’s chosen region (punctuation tolerant). Warn text alarms immediately when set. A debuff stays until its fade line, or until a slain line, with no countdown."/>
+                         Text="Matching is case-insensitive on each line’s chosen region. A debuff land phrase matches inside the line; the words before it are the monster. A slain line that names that monster clears it. Any other slain line clears every debuff."/>
             </Grid>
           </Border>
         </Grid>

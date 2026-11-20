@@ -62,9 +62,23 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                             Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"
-                             VerticalAlignment="Center"/>
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                               Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding TargetName}" FontSize="11" Foreground="#39E0CC"
+                               TextTrimming="CharacterEllipsis">
+                      <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                          <Setter Property="Visibility" Value="Visible"/>
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding TargetName}" Value="">
+                              <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </TextBlock.Style>
+                    </TextBlock>
+                  </StackPanel>
                   <TextBlock Grid.Column="1" Text="{Binding RemainingDisplay}"
                              FontWeight="Bold" FontSize="20" Margin="8,0,0,0"
                              VerticalAlignment="Center">

@@ -9,6 +9,8 @@ public sealed class ActiveBuff : INotifyPropertyChanged
     private bool _warned;
 
     public required BuffDefinition Definition { get; init; }
+    /// <summary>Monster in front of a debuff land phrase. Empty for buffs.</summary>
+    public string TargetName { get; init; } = string.Empty;
     public DateTime LandedAtUtc { get; init; }
 
     public TimeSpan Remaining

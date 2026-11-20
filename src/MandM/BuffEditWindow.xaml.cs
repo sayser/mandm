@@ -81,20 +81,21 @@ public partial class BuffEditWindow : Window
 
     private void ApplyKindUi()
     {
-        if (PanelTiming is null || PanelCast is null || PanelWarn is null)
+        if (PanelTiming is null || PanelCast is null || PanelWarn is null || LblCast is null)
             return;
 
         var debuff = IsDebuffKind;
         PanelTiming.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
-        PanelCast.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
+        PanelCast.Visibility = Visibility.Visible;
         PanelWarn.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
-        LblLand.Text = debuff ? "LAND TEXT (STARTS AND ALERTS)" : "LAND TEXT (STARTS TIMER)";
-        LblFade.Text = debuff ? "FADE TEXT (ALERTS AND CLEARS)" : "FADE TEXT (CLEARS TIMER)";
+        LblCast.Text = debuff ? "CAST TEXT (OPTIONAL — NO ALERT)" : "CAST TEXT (OPTIONAL)";
+        LblLand.Text = debuff ? "LAND PHRASE (TEXT BEFORE IT IS THE MONSTER)" : "LAND TEXT (STARTS TIMER)";
+        LblFade.Text = debuff ? "FADE PHRASE (ALERTS AND CLEARS)" : "FADE TEXT (CLEARS TIMER)";
         LblSubtitle.Text = debuff
-            ? "A new land line starts it and plays the alert. Fade plays the alert and clears it. A slain line clears it silently."
+            ? "Cast text is only a record. A new land phrase starts that monster and plays the alert. Fade plays once and clears it."
             : "Land starts or resets the timer. Fade clears it. Warn text alarms immediately. Each line picks a region.";
         LblMatchHint.Text = debuff
-            ? "Each line only watches its region dropdown. Combat for effects you cast or that hit you. Point a line at Main only when that text is there. A debuff has no duration and no warn time."
+            ? "Land text is a phrase, not the whole line. “looks weak” matches “a bloated plague rat looks weak.” The words in front are the monster, and that name is shown while it is active. Two monsters can hold the same debuff. A fade phrase with no monster name clears every copy. Cast text does not play a sound. Each line only watches its region."
             : "Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown. Phrases match on word boundaries.";
         LblWarnVoice.Text = debuff ? "LAND VOICE TEXT" : "WARN VOICE TEXT";
         LblVoiceHint.Text = debuff

@@ -10,5 +10,7 @@
     <Compile Include="..\..\src\MandM\Services\DamageLineParser.cs" Link="DamageLineParser.cs" />
     <Compile Include="..\..\src\MandM\Services\DamageLineBuffer.cs" Link="DamageLineBuffer.cs" />
     <Compile Include="..\..\src\MandM\Services\DamageFight.cs" Link="DamageFight.cs" />
+    <Compile Include="..\..\src\MandM\Services\TextMatch.cs" Link="TextMatch.cs" />
+    <Compile Include="..\..\src\MandM\Services\DebuffPhrase.cs" Link="DebuffPhrase.cs" />
   </ItemGroup>
 </Project>
