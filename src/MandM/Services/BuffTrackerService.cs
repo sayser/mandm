@@ -210,7 +210,7 @@ public sealed class BuffTrackerService : IDisposable
             }
         }
 
-        if (RegionEquals(def.FadeRegionId, regionId))
+        if (!string.IsNullOrWhiteSpace(def.FadeText) && RegionEquals(def.FadeRegionId, regionId))
         {
             var matched = MatchingDebuffLines(entries, def.FadeText, PeerPhrases(def, def.FadeText));
             var fresh = TakeFresh(def.Id, matched, _seenDebuffFade, fireEvents);
@@ -553,8 +553,8 @@ public sealed class BuffTrackerService : IDisposable
             foreach (var buff in doomed)
                 ActiveBuffs.Remove(buff);
             _alarms.PlayAlert(
-                def.AlertMode,
-                def.AlarmSound,
+                def.ResolvedFadeAlertMode,
+                def.ResolvedFadeAlarmSound,
                 def.FadeVoiceText,
                 $"{def.Name} faded");
             Changed?.Invoke();
@@ -567,9 +567,10 @@ public sealed class BuffTrackerService : IDisposable
     {
         void Apply()
         {
-            var existing = ActiveBuffs.FirstOrDefault(b => b.Definition.Id == buffId);
-            if (existing is null) return;
-            ActiveBuffs.Remove(existing);
+            var existing = ActiveBuffs.Where(b => b.Definition.Id == buffId).ToList();
+            if (existing.Count == 0) return;
+            foreach (var buff in existing)
+                ActiveBuffs.Remove(buff);
             Changed?.Invoke();
         }
 

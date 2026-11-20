@@ -93,6 +93,26 @@ public sealed class DamageFight
         SlainTarget = string.IsNullOrWhiteSpace(target) ? string.Empty : target.Trim();
     }
 
+    /// <summary>
+    /// Stop the clock without a slain line and without clearing the totals.
+    /// The next damage line starts a new fight. A slain line while not tracking does nothing.
+    /// </summary>
+    public void Hold(DateTime when)
+    {
+        if (!Tracking)
+            return;
+        Tracking = false;
+        EndedAt = when;
+    }
+
+    /// <summary>Drop a span out of the running clock, such as time spent paused.</summary>
+    public void Exclude(TimeSpan span)
+    {
+        if (span <= TimeSpan.Zero || StartedAt is null)
+            return;
+        StartedAt = StartedAt.Value + span;
+    }
+
     public void Reset()
     {
         Tracking = false;

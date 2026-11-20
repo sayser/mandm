@@ -14,6 +14,7 @@
     <DockPanel Margin="18">
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
       <Button Content="Test Sound" Width="110" Margin="0,0,8,0" Click="TestSound_Click"/>
+      <Button Name="BtnTestFade" Content="Test Fade" Width="110" Margin="0,0,8,0" Click="TestFade_Click" Visibility="Collapsed"/>
       <Button Content="Cancel" Width="90" Margin="0,0,8,0" Click="Cancel_Click"/>
       <Button Style="{StaticResource PrimaryButton}" Content="Save" Width="90" Click="Save_Click"/>
     </StackPanel>
@@ -121,13 +122,13 @@
             </StackPanel>
           </Border>
 
-          <TextBlock Text="ALERT OUTPUT" Style="{StaticResource DialogLabel}"/>
+          <TextBlock Name="LblAlert" Text="ALERT OUTPUT" Style="{StaticResource DialogLabel}"/>
           <ComboBox Name="CmbAlertMode" Margin="0,0,0,10"
                     SelectionChanged="AlertMode_Changed"
                     Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"/>
 
           <StackPanel Name="PanelSound">
-            <TextBlock Text="ALARM SOUND" Style="{StaticResource DialogLabel}"/>
+            <TextBlock Name="LblSound" Text="ALARM SOUND" Style="{StaticResource DialogLabel}"/>
             <DockPanel Margin="0,0,0,6">
               <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Padding="12,7"
                       Click="BrowseSound_Click"/>
@@ -143,10 +144,36 @@
             <TextBlock Name="LblWarnVoice" Text="WARN VOICE TEXT" Style="{StaticResource DialogLabel}"/>
             <TextBox Name="TxtWarnVoice" Margin="0,0,0,10"
                      ToolTip="Spoken on warn, or when a debuff lands. Empty uses a short default."/>
-            <TextBlock Text="FADE VOICE TEXT" Style="{StaticResource DialogLabel}"/>
-            <TextBox Name="TxtFadeVoice" Margin="0,0,0,6"
-                     ToolTip="Spoken on fade. Empty uses “{name} faded”."/>
+            <StackPanel Name="PanelBuffFadeVoice">
+              <TextBlock Text="FADE VOICE TEXT" Style="{StaticResource DialogLabel}"/>
+              <TextBox Name="TxtFadeVoice" Margin="0,0,0,6"
+                       ToolTip="Spoken on fade. Empty uses “{name} faded”."/>
+            </StackPanel>
             <TextBlock Name="LblVoiceHint" Text="Voice is chosen in Options → Spoken alerts. Test uses the warn line."
+                       Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <StackPanel Name="PanelFadeAlert" Visibility="Collapsed" Margin="0,12,0,0">
+            <TextBlock Text="FADE ALERT" Style="{StaticResource DialogLabel}"/>
+            <ComboBox Name="CmbFadeAlertMode" Margin="0,0,0,10"
+                      SelectionChanged="FadeAlertMode_Changed"
+                      Foreground="#EDF7FF" Background="#A0092235" BorderBrush="#42677F"/>
+            <StackPanel Name="PanelFadeSound">
+              <TextBlock Text="FADE SOUND" Style="{StaticResource DialogLabel}"/>
+              <DockPanel Margin="0,0,0,6">
+                <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Padding="12,7"
+                        Click="BrowseFadeSound_Click"/>
+                <ComboBox Name="CmbFadeSound" IsEditable="True"
+                          Foreground="#EDF7FF" Background="#A0092235"
+                          BorderBrush="#42677F"/>
+              </DockPanel>
+            </StackPanel>
+            <StackPanel Name="PanelFadeVoice" Visibility="Collapsed">
+              <TextBlock Text="FADE VOICE TEXT" Style="{StaticResource DialogLabel}"/>
+              <TextBox Name="TxtFadeVoiceDebuff" Margin="0,0,0,6"
+                       ToolTip="Spoken only when this debuff fades. Separate from the land voice."/>
+            </StackPanel>
+            <TextBlock Text="Used only when fade text is set. Choosing a land voice does not change this."
                        Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
           </StackPanel>
         </StackPanel>

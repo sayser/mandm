@@ -37,18 +37,33 @@ public partial class BuffEditWindow : Window
         TxtWarn.Text = def.WarnText;
         TxtWarnVoice.Text = def.WarnVoiceText;
         TxtFadeVoice.Text = def.FadeVoiceText;
+        TxtFadeVoiceDebuff.Text = def.FadeVoiceText;
 
-        CmbAlertMode.ItemsSource = new[]
+        var alertChoices = new[]
         {
             new { Mode = AlertMode.Sound, Label = "Sound (wav / system)" },
             new { Mode = AlertMode.Voice, Label = "Voice (spoken text)" }
         };
+        CmbAlertMode.ItemsSource = alertChoices;
         CmbAlertMode.DisplayMemberPath = "Label";
         CmbAlertMode.SelectedValuePath = "Mode";
         CmbAlertMode.SelectedValue = AlertModeOptions.Normalize(def.AlertMode);
 
+        CmbFadeAlertMode.ItemsSource = new[]
+        {
+            new { Mode = AlertMode.Sound, Label = "Sound (wav / system)" },
+            new { Mode = AlertMode.Voice, Label = "Voice (spoken text)" }
+        };
+        CmbFadeAlertMode.DisplayMemberPath = "Label";
+        CmbFadeAlertMode.SelectedValuePath = "Mode";
+        CmbFadeAlertMode.SelectedValue = AlertModeOptions.Normalize(def.ResolvedFadeAlertMode);
+
         CmbSound.ItemsSource = AlarmService.BuiltInSounds;
         CmbSound.Text = def.AlarmSound;
+        CmbFadeSound.ItemsSource = AlarmService.BuiltInSounds;
+        CmbFadeSound.Text = string.IsNullOrWhiteSpace(def.FadeAlarmSound)
+            ? def.AlarmSound
+            : def.FadeAlarmSound;
         RefreshAlertPanels();
     }
 
@@ -75,6 +90,13 @@ public partial class BuffEditWindow : Window
 
     private void AlertMode_Changed(object sender, SelectionChangedEventArgs e) => RefreshAlertPanels();
 
+    private void FadeAlertMode_Changed(object sender, SelectionChangedEventArgs e) => RefreshFadeAlertPanels();
+
+    private AlertMode SelectedFadeAlertMode() =>
+        CmbFadeAlertMode?.SelectedValue is AlertMode mode
+            ? AlertModeOptions.Normalize(mode)
+            : AlertMode.Sound;
+
     private void Kind_Changed(object sender, RoutedEventArgs e) => ApplyKindUi();
 
     private bool IsDebuffKind => KindDebuff?.IsChecked == true;
@@ -90,17 +112,24 @@ public partial class BuffEditWindow : Window
         PanelWarn.Visibility = debuff ? Visibility.Collapsed : Visibility.Visible;
         LblCast.Text = debuff ? "CAST TEXT (OPTIONAL — NO ALERT)" : "CAST TEXT (OPTIONAL)";
         LblLand.Text = debuff ? "LAND PHRASE (TEXT BEFORE IT IS THE MONSTER)" : "LAND TEXT (STARTS TIMER)";
-        LblFade.Text = debuff ? "FADE PHRASE (ALERTS AND CLEARS)" : "FADE TEXT (CLEARS TIMER)";
+        LblFade.Text = debuff ? "FADE PHRASE (OPTIONAL)" : "FADE TEXT (CLEARS TIMER)";
+        if (LblAlert is not null)
+            LblAlert.Text = debuff ? "LAND ALERT" : "ALERT OUTPUT";
+        if (LblSound is not null)
+            LblSound.Text = debuff ? "LAND SOUND" : "ALARM SOUND";
+        if (BtnTestFade is not null)
+            BtnTestFade.Visibility = debuff ? Visibility.Visible : Visibility.Collapsed;
         LblSubtitle.Text = debuff
-            ? "Cast text is only a record. A new land phrase starts that monster and plays the alert. Fade plays once and clears it."
+            ? "Land starts tracking and plays the land alert. Fade is optional and has its own alert. Empty fade text stays until a slain line."
             : "Land starts or resets the timer. Fade clears it. Warn text alarms immediately. Each line picks a region.";
         LblMatchHint.Text = debuff
-            ? "Land text is a phrase, not the whole line. “looks weak” matches “a bloated plague rat looks weak.” The words in front are the monster, and that name is shown while it is active. Two monsters can hold the same debuff. A fade phrase with no monster name clears every copy. Cast text does not play a sound. Each line only watches its region."
+            ? "Land text is a phrase, not the whole line. “looks weak” matches “a bloated plague rat looks weak.” The words in front are the monster. Leave fade text empty for no fade alert. A fade phrase uses the fade alert, not the land voice. Cast text does not play a sound."
             : "Leave warn text empty to keep the time-based warn above. Each line only watches its region dropdown. Phrases match on word boundaries.";
         LblWarnVoice.Text = debuff ? "LAND VOICE TEXT" : "WARN VOICE TEXT";
         LblVoiceHint.Text = debuff
-            ? "Voice is chosen in Options → Spoken alerts. Land speaks the land line. Fade speaks the fade line. Test uses the land line."
+            ? "Voice is chosen in Options → Spoken alerts. This line is only the land alert."
             : "Voice is chosen in Options → Spoken alerts. Test uses the warn line.";
+        RefreshAlertPanels();
     }
 
     private void RefreshAlertPanels()
@@ -109,6 +138,19 @@ public partial class BuffEditWindow : Window
         var voice = SelectedAlertMode() == AlertMode.Voice;
         PanelSound.Visibility = voice ? Visibility.Collapsed : Visibility.Visible;
         PanelVoice.Visibility = voice ? Visibility.Visible : Visibility.Collapsed;
+        if (PanelBuffFadeVoice is not null)
+            PanelBuffFadeVoice.Visibility = IsDebuffKind ? Visibility.Collapsed : Visibility.Visible;
+        if (PanelFadeAlert is not null)
+            PanelFadeAlert.Visibility = IsDebuffKind ? Visibility.Visible : Visibility.Collapsed;
+        RefreshFadeAlertPanels();
+    }
+
+    private void RefreshFadeAlertPanels()
+    {
+        if (PanelFadeSound is null || PanelFadeVoice is null) return;
+        var voice = SelectedFadeAlertMode() == AlertMode.Voice;
+        PanelFadeSound.Visibility = voice ? Visibility.Collapsed : Visibility.Visible;
+        PanelFadeVoice.Visibility = voice ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void BrowseSound_Click(object sender, RoutedEventArgs e)
@@ -120,6 +162,17 @@ public partial class BuffEditWindow : Window
         };
         if (dlg.ShowDialog(this) == true)
             CmbSound.Text = dlg.FileName;
+    }
+
+    private void BrowseFadeSound_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Wave audio (*.wav)|*.wav|All files (*.*)|*.*",
+            Title = "Select fade sound"
+        };
+        if (dlg.ShowDialog(this) == true)
+            CmbFadeSound.Text = dlg.FileName;
     }
 
     private void TestSound_Click(object sender, RoutedEventArgs e)
@@ -137,6 +190,23 @@ public partial class BuffEditWindow : Window
         else
         {
             App.State.Alarms.Play(CmbSound.Text);
+        }
+    }
+
+    private void TestFade_Click(object sender, RoutedEventArgs e)
+    {
+        var name = string.IsNullOrWhiteSpace(TxtName.Text) ? "Spell" : TxtName.Text.Trim();
+        if (SelectedFadeAlertMode() == AlertMode.Voice)
+        {
+            App.State.Alarms.PlayAlert(
+                AlertMode.Voice,
+                CmbFadeSound.Text,
+                TxtFadeVoiceDebuff.Text,
+                $"{name} faded");
+        }
+        else
+        {
+            App.State.Alarms.Play(CmbFadeSound.Text);
         }
     }
 
@@ -177,13 +247,6 @@ public partial class BuffEditWindow : Window
             return;
         }
 
-        if (debuff && string.IsNullOrWhiteSpace(TxtFade.Text))
-        {
-            MessageBox.Show(this, "Fade text is required (plays the alert and clears the debuff).", "MandM",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         if (App.State.Settings.CaptureRegions.Count == 0)
         {
             MessageBox.Show(this, "Add a capture region in Options first.", "MandM",
@@ -210,7 +273,20 @@ public partial class BuffEditWindow : Window
         Result.AlertMode = SelectedAlertMode();
         Result.AlarmSound = string.IsNullOrWhiteSpace(CmbSound.Text) ? "Exclamation" : CmbSound.Text.Trim();
         Result.WarnVoiceText = TxtWarnVoice.Text.Trim();
-        Result.FadeVoiceText = TxtFadeVoice.Text.Trim();
+        if (debuff)
+        {
+            Result.FadeAlertMode = SelectedFadeAlertMode();
+            Result.FadeAlarmSound = string.IsNullOrWhiteSpace(CmbFadeSound.Text)
+                ? "Exclamation"
+                : CmbFadeSound.Text.Trim();
+            Result.FadeVoiceText = TxtFadeVoiceDebuff.Text.Trim();
+        }
+        else
+        {
+            Result.FadeAlertMode = null;
+            Result.FadeAlarmSound = string.Empty;
+            Result.FadeVoiceText = TxtFadeVoice.Text.Trim();
+        }
         DialogResult = true;
         Close();
     }

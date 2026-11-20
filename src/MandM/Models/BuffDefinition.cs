@@ -32,10 +32,21 @@ public sealed class BuffDefinition
     public AlertMode AlertMode { get; set; } = AlertMode.Sound;
     /// <summary>Built-in sound id or absolute .wav path (Sound mode).</summary>
     public string AlarmSound { get; set; } = "Exclamation";
-    /// <summary>Spoken warn alert text (Voice mode). Empty → "{Name} warning".</summary>
+    /// <summary>Spoken warn alert text (Voice mode). Empty → "{Name} warning". Debuff land uses this.</summary>
     public string WarnVoiceText { get; set; } = string.Empty;
     /// <summary>Spoken fade alert text (Voice mode). Empty → "{Name} faded".</summary>
     public string FadeVoiceText { get; set; } = string.Empty;
+    /// <summary>Debuff fade alarm. Null on older saves, which keep using the land alarm until the spell is edited.</summary>
+    public AlertMode? FadeAlertMode { get; set; }
+    /// <summary>Debuff fade sound. Empty keeps the land sound until a fade alarm is chosen.</summary>
+    public string FadeAlarmSound { get; set; } = string.Empty;
+
+    public AlertMode ResolvedFadeAlertMode => FadeAlertMode ?? AlertMode;
+
+    public string ResolvedFadeAlarmSound =>
+        FadeAlertMode is null || string.IsNullOrWhiteSpace(FadeAlarmSound)
+            ? AlarmSound
+            : FadeAlarmSound;
 
     public bool Enabled { get; set; } = true;
 
@@ -77,6 +88,8 @@ public sealed class BuffDefinition
         AlarmSound = AlarmSound,
         WarnVoiceText = WarnVoiceText,
         FadeVoiceText = FadeVoiceText,
+        FadeAlertMode = FadeAlertMode,
+        FadeAlarmSound = FadeAlarmSound,
         Enabled = Enabled
     };
 

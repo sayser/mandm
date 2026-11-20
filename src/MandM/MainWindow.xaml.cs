@@ -451,7 +451,7 @@ public partial class MainWindow : Window
         }
 
         TxtDamageHint.Text = selected.IsValid
-            ? $"Reading “{selected.Name}”. New hits start a fight. Any slain line, including a party member’s kill, ends it until the next hit."
+            ? $"Reading “{selected.Name}”. Pause keeps this fight and ignores new lines. Stop leaves it on screen. The next start begins a new fight only from a new hit. A slain line while stopped does nothing."
             : $"“{selected.Name}” has no rectangle yet. Set it in Options, then choose it here.";
     }
 
@@ -464,11 +464,38 @@ public partial class MainWindow : Window
         TxtFightDps.Text = damage.DpsDisplay;
         TxtFightStatus.Text = damage.StatusDisplay;
         TxtNoDamage.Visibility = damage.Abilities.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SyncDamageButtons(damage);
         if (damage.Abilities.Count == 0 && damage.HasFight)
             TxtNoDamage.Text = "Fight started. Ability totals appear as you land hits.";
         else if (damage.Abilities.Count == 0)
             TxtNoDamage.Text = "No fight yet. The next new hit starts one. Lines already on screen are ignored.";
     }
+
+    private void SyncDamageButtons(DamageTrackerService damage)
+    {
+        if (BtnDamageStart is null || BtnDamagePause is null || BtnDamageStop is null)
+            return;
+        var watch = damage.Watch;
+        BtnDamageStart.IsEnabled = watch == DamageWatch.Stopped;
+        BtnDamagePause.IsEnabled = watch != DamageWatch.Stopped;
+        BtnDamagePause.Content = watch == DamageWatch.Paused ? "Resume" : "Pause";
+        BtnDamageStop.IsEnabled = watch != DamageWatch.Stopped;
+    }
+
+    private void DamageStart_Click(object sender, RoutedEventArgs e) =>
+        App.State.Damage.Start();
+
+    private void DamagePause_Click(object sender, RoutedEventArgs e)
+    {
+        var damage = App.State.Damage;
+        if (damage.Watch == DamageWatch.Paused)
+            damage.Resume();
+        else
+            damage.Pause();
+    }
+
+    private void DamageStop_Click(object sender, RoutedEventArgs e) =>
+        App.State.Damage.Stop();
 
     private void ResetDamage_Click(object sender, RoutedEventArgs e) =>
         App.State.Damage.ClearFight();

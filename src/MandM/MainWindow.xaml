@@ -534,8 +534,16 @@
                                Foreground="#66879D" FontSize="10" TextWrapping="Wrap"/>
                   </StackPanel>
                 </StackPanel>
-                <Button Grid.Column="1" Style="{StaticResource PanelActionButton}" Content="Reset"
-                        VerticalAlignment="Center" Click="ResetDamage_Click"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                  <Button Name="BtnDamageStart" Style="{StaticResource PanelActionButton}" Content="Start"
+                          Click="DamageStart_Click" ToolTip="Watch combat again. The next new hit starts a new fight."/>
+                  <Button Name="BtnDamagePause" Style="{StaticResource PanelActionButton}" Content="Pause"
+                          Click="DamagePause_Click" ToolTip="Keep this fight and ignore new lines until resumed."/>
+                  <Button Name="BtnDamageStop" Style="{StaticResource PanelActionButton}" Content="Stop"
+                          Click="DamageStop_Click" ToolTip="Stop watching. The last fight stays until the next start."/>
+                  <Button Style="{StaticResource PanelActionButton}" Content="Reset"
+                          Click="ResetDamage_Click"/>
+                </StackPanel>
               </Grid>
 
               <Grid Grid.Row="1" Margin="0,0,0,12">

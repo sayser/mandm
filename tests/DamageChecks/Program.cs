@@ -326,6 +326,24 @@ Check("a new land line is fresh and a still-visible line is not",
     firstSight.Count == 2 && stillVisible.Count == 0 && secondMob.Count == 1
     && secondMob[0].Contains("crystal dervish", StringComparison.Ordinal));
 
+var held = new DamageFight();
+held.ApplyFrame([crush], [crush], t0);
+held.Hold(t0.AddSeconds(4));
+Check("stop holds the fight without a slain line",
+    !held.Tracking && held.HasFight && held.DamageDealt == 32 && held.SlainBy.Length == 0);
+held.ApplyFrame(
+    ["You have slain a crystal dervish!"],
+    ["You have slain a crystal dervish!"],
+    t0.AddSeconds(5));
+Check("a slain line while held does nothing",
+    !held.Tracking && held.DamageDealt == 32 && held.SlainBy.Length == 0);
+held.ApplyFrame(
+    ["You slash a tormented guardian for 10 points of damage."],
+    ["You slash a tormented guardian for 10 points of damage."],
+    t0.AddSeconds(6));
+Check("the next hit after a hold starts a new fight",
+    held.Tracking && held.DamageDealt == 10 && held.SlainBy.Length == 0);
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");
