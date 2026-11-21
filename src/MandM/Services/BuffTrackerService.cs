@@ -10,18 +10,17 @@ public sealed class BuffTrackerService : IDisposable
     private readonly AlarmService _alarms;
     private readonly DispatcherTimer _tick;
     private readonly object _gate = new();
-    /// <summary>OCR line match counts from the previous poll (per buff id).</summary>
-    private Dictionary<string, int> _previousLandCounts = new(StringComparer.Ordinal);
-    private Dictionary<string, int> _previousFadeCounts = new(StringComparer.Ordinal);
-    private Dictionary<string, int> _previousCastCounts = new(StringComparer.Ordinal);
-    private Dictionary<string, int> _previousWarnCounts = new(StringComparer.Ordinal);
     /// <summary>
-    /// Land sights still on screen, per spell. Not cleared when a fight ends.
-    /// A sight drops out only when that line leaves the capture.
+    /// Phrase sights still remembered, per spell. The value is how many successful
+    /// reads in a row that sight has been missing. Not cleared on focus or when a fight ends.
+    /// An empty capture does not touch these. A sight drops only after a second miss.
     /// </summary>
-    private readonly Dictionary<string, HashSet<string>> _seenDebuffLand = new(StringComparer.Ordinal);
-    /// <summary>Fade sights still on screen, per spell. Same lifetime as land sights.</summary>
-    private readonly Dictionary<string, HashSet<string>> _seenDebuffFade = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffCast = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffLand = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffFade = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffWarn = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenDebuffLand = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, int>> _seenDebuffFade = new(StringComparer.Ordinal);
     /// <summary>Canonical slain lines still on screen, per capture region.</summary>
     private readonly Dictionary<string, HashSet<string>> _seenSlain = new(StringComparer.Ordinal);
     /// <summary>Newly appeared slain lines this OCR pass. Cleared after every region is applied.</summary>
@@ -53,18 +52,19 @@ public sealed class BuffTrackerService : IDisposable
     }
 
     /// <summary>
-    /// Clear match counters so the next OCR pass must re-baseline.
-    /// Prevents mid-session settings saves from treating on-screen text as brand new.
+    /// Clear remembered lines so the next OCR pass must re-baseline.
+    /// Used when monitoring starts and when settings change.
+    /// Focus, activation, and a blank capture do not call this.
     /// </summary>
     public void InvalidateMatchBaseline()
     {
         lock (_gate)
         {
             _acceptMatchEvents = false;
-            _previousLandCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            _previousFadeCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            _previousCastCounts = new Dictionary<string, int>(StringComparer.Ordinal);
-            _previousWarnCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            _seenBuffCast.Clear();
+            _seenBuffLand.Clear();
+            _seenBuffFade.Clear();
+            _seenBuffWarn.Clear();
             _seenDebuffLand.Clear();
             _seenDebuffFade.Clear();
             _seenSlain.Clear();
@@ -104,13 +104,15 @@ public sealed class BuffTrackerService : IDisposable
             .Select(raw => (raw ?? string.Empty).Trim())
             .Where(raw => raw.Length > 0)
             .ToList();
-        var blob = string.Join("\n", entries);
+        // A blank or failed capture is not a successful read. Leave every remembered line in place.
+        if (entries.Count == 0)
+            return;
 
         foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
         {
             if (def.IsDebuff)
             {
-                ApplyDebuffLines(regionId, entries, blob, def, fireEvents);
+                ApplyDebuffLines(regionId, entries, def, fireEvents);
                 continue;
             }
 
@@ -118,70 +120,47 @@ public sealed class BuffTrackerService : IDisposable
             // Warn before fade so a warn line that also loosely resembles fade still alarms
             // before any clear, and fade uses specificity against warn/land/cast.
 
+            var peers = PhrasesOf(def).ToList();
             if (RegionEquals(def.CastRegionId, regionId))
             {
-                var castNow = CountPhraseMatches(entries, blob, def, def.CastText);
-                int castWas;
-                bool allow;
-                lock (_gate)
+                var fresh = TakeFreshSights(
+                    def.Id, ReadSights(entries, def.CastText, peers), def.CastText, _seenBuffCast, fireEvents);
+                if (fresh.Count > 0)
                 {
-                    castWas = _previousCastCounts.GetValueOrDefault(def.Id);
-                    _previousCastCounts[def.Id] = castNow;
-                    allow = fireEvents && _acceptMatchEvents;
-                    if (allow && castNow > castWas)
+                    lock (_gate)
                         _armedFromCast.Add(def.Id);
                 }
             }
 
             if (RegionEquals(def.LandRegionId, regionId))
             {
-                var landNow = CountPhraseMatches(entries, blob, def, def.LandText);
-                int landWas;
-                bool newLandOccurrence;
+                var visible = ReadSights(entries, def.LandText, peers);
+                var fresh = TakeFreshSights(def.Id, visible, def.LandText, _seenBuffLand, fireEvents);
                 bool castArmedLand;
                 lock (_gate)
                 {
-                    landWas = _previousLandCounts.GetValueOrDefault(def.Id);
-                    _previousLandCounts[def.Id] = landNow;
-                    newLandOccurrence = fireEvents && _acceptMatchEvents && landNow > landWas;
                     castArmedLand = fireEvents && _acceptMatchEvents
-                                    && landNow > 0
+                                    && visible.Count > 0
                                     && _armedFromCast.Remove(def.Id);
                 }
 
-                if (newLandOccurrence || castArmedLand)
+                if (fresh.Count > 0 || castArmedLand)
                     LandBuff(def);
             }
 
             if (RegionEquals(def.WarnRegionId, regionId) && !string.IsNullOrWhiteSpace(def.WarnText))
             {
-                var warnNow = CountPhraseMatches(entries, blob, def, def.WarnText);
-                int warnWas;
-                bool allow;
-                lock (_gate)
-                {
-                    warnWas = _previousWarnCounts.GetValueOrDefault(def.Id);
-                    _previousWarnCounts[def.Id] = warnNow;
-                    allow = fireEvents && _acceptMatchEvents;
-                }
-
-                if (allow && warnNow > warnWas)
+                var fresh = TakeFreshSights(
+                    def.Id, ReadSights(entries, def.WarnText, peers), def.WarnText, _seenBuffWarn, fireEvents);
+                if (fresh.Count > 0)
                     TriggerWarnFromText(def);
             }
 
             if (RegionEquals(def.FadeRegionId, regionId))
             {
-                var fadeNow = CountPhraseMatches(entries, blob, def, def.FadeText);
-                int fadeWas;
-                bool allow;
-                lock (_gate)
-                {
-                    fadeWas = _previousFadeCounts.GetValueOrDefault(def.Id);
-                    _previousFadeCounts[def.Id] = fadeNow;
-                    allow = fireEvents && _acceptMatchEvents;
-                }
-
-                if (allow && fadeNow > fadeWas)
+                var fresh = TakeFreshSights(
+                    def.Id, ReadSights(entries, def.FadeText, peers), def.FadeText, _seenBuffFade, fireEvents);
+                if (fresh.Count > 0)
                     FadeBuff(def);
             }
         }
@@ -197,12 +176,9 @@ public sealed class BuffTrackerService : IDisposable
     private void ApplyDebuffLines(
         string regionId,
         List<string> entries,
-        string blob,
         BuffDefinition def,
         bool fireEvents)
     {
-        _ = blob;
-
         if (RegionEquals(def.LandRegionId, regionId))
         {
             var visible = ReadSights(entries, def.LandText, PeerPhrases(def, def.LandText));
@@ -252,6 +228,13 @@ public sealed class BuffTrackerService : IDisposable
                 sights.Add(new DebuffPhrase.DebuffSight(line, monster));
         }
 
+        if (sights.Count == 0 && entries.Count > 1)
+        {
+            var blob = string.Join("\n", entries);
+            if (DebuffPhrase.TryRead(blob, phrase, peers, out var monster))
+                sights.Add(new DebuffPhrase.DebuffSight(blob, monster));
+        }
+
         return sights;
     }
 
@@ -269,14 +252,14 @@ public sealed class BuffTrackerService : IDisposable
         string spellId,
         List<DebuffPhrase.DebuffSight> visible,
         string? phrase,
-        Dictionary<string, HashSet<string>> store,
+        Dictionary<string, Dictionary<string, int>> store,
         bool fireEvents)
     {
         lock (_gate)
         {
             if (!store.TryGetValue(spellId, out var seen))
             {
-                seen = new HashSet<string>(StringComparer.Ordinal);
+                seen = new Dictionary<string, int>(StringComparer.Ordinal);
                 store[spellId] = seen;
             }
 
@@ -322,54 +305,6 @@ public sealed class BuffTrackerService : IDisposable
 
         if (slain.Count > 0)
             ClearDebuffsForSlain(slain);
-    }
-
-    /// <summary>
-    /// Count lines that match <paramref name="needle"/> for this buff, but let a longer
-    /// configured phrase that also matches "own" the line (warn over short fade, etc.).
-    /// </summary>
-    private static int CountPhraseMatches(
-        List<string> entries,
-        string blob,
-        BuffDefinition def,
-        string? needle)
-    {
-        if (string.IsNullOrWhiteSpace(needle))
-            return 0;
-
-        var count = entries.Count(line => LineOwnsPhrase(line, def, needle));
-        if (count == 0 && LineOwnsPhrase(blob, def, needle))
-            return 1;
-        return count;
-    }
-
-    private static bool LineOwnsPhrase(string line, BuffDefinition def, string needle)
-    {
-        if (!TextMatch.ContainsLoose(line, needle))
-            return false;
-
-        // Longer same-buff phrases that also match steal the line from shorter ones.
-        // Example: fade "You appear" must not claim warn "You begin to feel yourself appearing".
-        foreach (var other in PhrasesOf(def))
-        {
-            if (string.Equals(other, needle, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!TextMatch.ContainsLoose(line, other))
-                continue;
-
-            var otherNorm = TextMatch.Normalize(other);
-            var needleNorm = TextMatch.Normalize(needle);
-            if (otherNorm.Length > needleNorm.Length)
-                return false;
-
-            // Same length rare; if the other phrase contains this needle, prefer other.
-            if (otherNorm.Length == needleNorm.Length)
-                continue;
-            if (TextMatch.ContainsLoose(other, needle))
-                return false;
-        }
-
-        return true;
     }
 
     private static IEnumerable<string> PhrasesOf(BuffDefinition def)

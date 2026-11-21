@@ -102,15 +102,21 @@ public static class DebuffPhrase
     }
 
     /// <summary>
-    /// Sights whose phrase and monster were not already visible.
-    /// <paramref name="previous"/> becomes whatever is still on screen.
-    /// A fight ending does not belong here: only a line that left the capture drops out.
+    /// Sights that were not already remembered.
+    /// <paramref name="remembered"/> maps a sight key to how many successful reads in a row
+    /// it has been missing. An empty or failed capture does not change it.
+    /// A sight drops only after it has been absent for more than one successful read.
+    /// Focus loss does not belong here.
     /// </summary>
     public static List<DebuffSight> FreshSights(
-        HashSet<string> previous,
+        Dictionary<string, int> remembered,
         IEnumerable<DebuffSight> visible,
-        string? phrase)
+        string? phrase,
+        bool emptyCapture = false)
     {
+        if (emptyCapture)
+            return [];
+
         var current = new HashSet<string>(StringComparer.Ordinal);
         var fresh = new List<DebuffSight>();
         foreach (var sight in visible)
@@ -118,12 +124,20 @@ public static class DebuffPhrase
             var key = SightKey(phrase, sight.Monster);
             if (key.Length == 0 || !current.Add(key))
                 continue;
-            if (!previous.Contains(key))
+            if (!remembered.ContainsKey(key))
                 fresh.Add(sight);
+            remembered[key] = 0;
         }
 
-        previous.Clear();
-        previous.UnionWith(current);
+        foreach (var key in remembered.Keys.Where(key => !current.Contains(key)).ToList())
+        {
+            var misses = remembered[key] + 1;
+            if (misses > 1)
+                remembered.Remove(key);
+            else
+                remembered[key] = misses;
+        }
+
         return fresh;
     }
 

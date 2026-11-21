@@ -344,17 +344,21 @@ held.ApplyFrame(
 Check("the next hit after a hold starts a new fight",
     held.Tracking && held.DamageDealt == 10 && held.SlainBy.Length == 0);
 
-var landMemory = new HashSet<string>(StringComparer.Ordinal);
+var landMemory = new Dictionary<string, int>(StringComparer.Ordinal);
 List<DebuffPhrase.DebuffSight> LandRead(params string[] lines)
 {
+    var empty = lines.Length == 0;
     var sights = new List<DebuffPhrase.DebuffSight>();
-    foreach (var line in lines)
+    if (!empty)
     {
-        if (DebuffPhrase.TryRead(line, landPhrase, null, out var monster))
-            sights.Add(new DebuffPhrase.DebuffSight(line, monster));
+        foreach (var line in lines)
+        {
+            if (DebuffPhrase.TryRead(line, landPhrase, null, out var monster))
+                sights.Add(new DebuffPhrase.DebuffSight(line, monster));
+        }
     }
 
-    return DebuffPhrase.FreshSights(landMemory, sights, landPhrase);
+    return DebuffPhrase.FreshSights(landMemory, sights, landPhrase, empty);
 }
 
 var landOnce = LandRead("a bloated plague rat looks weak.");
@@ -376,10 +380,54 @@ Check("a different monster alerts once while the first line stays",
     secondMonster.Count == 1 && secondMonster[0].Monster == "a crystal dervish");
 Check("that second monster does not alert on the next read",
     LandRead("a bloated plague rat looks weak.", "a crystal dervish looks weak.").Count == 0);
-LandRead();
+var landAfterEmpty = LandRead();
+var landSameAfterEmpty = LandRead("a bloated plague rat looks weak.");
+Check("an empty read does not make the same land line alert again",
+    landAfterEmpty.Count == 0 && landSameAfterEmpty.Count == 0);
+var landMissedOnce = LandRead("You begin casting Greater Hex of Enfeeblement.");
+var landHeld = LandRead("a bloated plague rat looks weak.");
+Check("one successful read without the land line does not drop it",
+    landMissedOnce.Count == 0 && landHeld.Count == 0);
+LandRead("You begin casting Greater Hex of Enfeeblement.");
+LandRead("You begin casting Greater Hex of Enfeeblement.");
 var landReturned = LandRead("a bloated plague rat looks weak.");
-Check("the land line alerts again only after it leaves",
+Check("the land line alerts again after two successful reads without it",
     landReturned.Count == 1 && landReturned[0].Monster == "a bloated plague rat");
+
+var fadePhrase = "You appear";
+var fadeMemory = new Dictionary<string, int>(StringComparer.Ordinal);
+List<DebuffPhrase.DebuffSight> FadeRead(params string[] lines)
+{
+    var empty = lines.Length == 0;
+    var sights = new List<DebuffPhrase.DebuffSight>();
+    if (!empty)
+    {
+        foreach (var line in lines)
+        {
+            if (DebuffPhrase.TryRead(line, fadePhrase, ["You begin to feel yourself appearing"], out var monster))
+                sights.Add(new DebuffPhrase.DebuffSight(line, monster));
+        }
+    }
+
+    return DebuffPhrase.FreshSights(fadeMemory, sights, fadePhrase, empty);
+}
+
+var fadeOnce = FadeRead("You appear.");
+var fadeEmpty = FadeRead();
+var fadeSame = FadeRead("You appear.");
+Check("a visible fade line, then an empty read, then the same line, does not alert again",
+    fadeOnce.Count == 1 && fadeEmpty.Count == 0 && fadeSame.Count == 0);
+var fadeGoneOnce = FadeRead("You begin casting Invisibility.");
+var fadeStillHeld = FadeRead("You appear.");
+Check("one successful read without the fade line does not alert again",
+    fadeGoneOnce.Count == 0 && fadeStillHeld.Count == 0);
+FadeRead("You begin casting Invisibility.");
+FadeRead("You begin casting Invisibility.");
+var fadeBack = FadeRead("You appear.");
+Check("a fade line gone for two successful reads alerts when it comes back",
+    fadeBack.Count == 1);
+Check("the invis warn line is not the fade line",
+    FadeRead("You begin to feel yourself appearing.").Count == 0);
 
 if (failed > 0)
 {
