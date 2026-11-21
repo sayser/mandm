@@ -199,7 +199,7 @@
                         <ListBox.ItemTemplate>
                           <DataTemplate>
                             <Border x:Name="BuffRow" BorderThickness="1" CornerRadius="10"
-                                    Background="#660A2E2E" BorderBrush="#AA2EE6C8" Padding="10,8" MinHeight="44">
+                                    Padding="10,8" MinHeight="44">
                               <Grid>
                                 <Grid.ColumnDefinitions>
                                   <ColumnDefinition Width="*"/>
@@ -207,13 +207,28 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
                                   <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
-                                             Foreground="#F0F8FF" TextTrimming="CharacterEllipsis"/>
-                                  <TextBlock Text="{Binding TargetName}" FontSize="11" Foreground="#39E0CC"
+                                             TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                      <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#F7FEFF"/>
+                                        <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsDebuff}" Value="True">
+                                            <Setter Property="Foreground" Value="#E4C4D0"/>
+                                          </DataTrigger>
+                                        </Style.Triggers>
+                                      </Style>
+                                    </TextBlock.Style>
+                                  </TextBlock>
+                                  <TextBlock Text="{Binding TargetName}" FontSize="11"
                                              Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
                                     <TextBlock.Style>
                                       <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#B7F4FF"/>
                                         <Setter Property="Visibility" Value="Visible"/>
                                         <Style.Triggers>
+                                          <DataTrigger Binding="{Binding IsDebuff}" Value="True">
+                                            <Setter Property="Foreground" Value="#C9A3B2"/>
+                                          </DataTrigger>
                                           <DataTrigger Binding="{Binding TargetName}" Value="">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                           </DataTrigger>
@@ -234,7 +249,7 @@
                                       </Style>
                                     </ProgressBar.Style>
                                     <ProgressBar.Foreground>
-                                      <SolidColorBrush Color="#A98BFF"/>
+                                      <SolidColorBrush Color="#8EDFF0"/>
                                     </ProgressBar.Foreground>
                                   </ProgressBar>
                                 </StackPanel>
@@ -243,8 +258,11 @@
                                            VerticalAlignment="Center" FontFamily="Segoe UI">
                                   <TextBlock.Style>
                                     <Style TargetType="TextBlock">
-                                      <Setter Property="Foreground" Value="#A98BFF"/>
+                                      <Setter Property="Foreground" Value="#E7FBFF"/>
                                       <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDebuff}" Value="True">
+                                          <Setter Property="Foreground" Value="#C48B9E"/>
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsWarning}" Value="True">
                                           <Setter Property="Foreground" Value="#FFBD57"/>
                                         </DataTrigger>
@@ -255,7 +273,13 @@
                               </Grid>
                               <Border.Style>
                                 <Style TargetType="Border">
+                                  <Setter Property="Background" Value="#B84A7A8C"/>
+                                  <Setter Property="BorderBrush" Value="#B7F4FF"/>
                                   <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDebuff}" Value="True">
+                                      <Setter Property="Background" Value="#D2141018"/>
+                                      <Setter Property="BorderBrush" Value="#7A4456"/>
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsWarning}" Value="True">
                                       <Setter Property="BorderBrush" Value="#FFBD57"/>
                                       <DataTrigger.EnterActions>
