@@ -322,23 +322,20 @@ public sealed class CaptureMonitorService : IDisposable
             }
 
             text = string.Join(Environment.NewLine, cleaned);
-            if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
-            {
-                slot.LastPreview = text;
-                AbilitiesPreviewChanged?.Invoke(text);
-            }
-
+            if (string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
+                return;
+            slot.LastPreview = text;
+            AbilitiesPreviewChanged?.Invoke(text);
             _tracker.SetLoadedAbilities(cleaned);
         }
         else
         {
             text = string.Join(Environment.NewLine, lines);
-            if (!string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
-            {
-                slot.LastPreview = text;
-                if (IsCombatPreviewRegion(named, settings))
-                    CombatPreviewChanged?.Invoke(text);
-            }
+            if (string.Equals(text, slot.LastPreview, StringComparison.Ordinal))
+                return;
+            slot.LastPreview = text;
+            if (IsCombatPreviewRegion(named, settings))
+                CombatPreviewChanged?.Invoke(text);
         }
 
         UpdateSnapshotText(named.Id, text);

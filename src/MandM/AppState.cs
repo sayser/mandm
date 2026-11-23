@@ -51,5 +51,6 @@ public sealed class AppState : IDisposable
         Monitor.Dispose();
         Tracker.Dispose();
         UserTimers.Dispose();
+        Ocr.Dispose();
     }
 }

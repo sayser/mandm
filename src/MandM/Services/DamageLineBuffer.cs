@@ -24,6 +24,9 @@ public sealed class DamageLineBuffer
     public List<string> Observe(IEnumerable<string> lines)
     {
         var current = Normalize(lines);
+        // A blank or failed capture is not a new frame. Keep the last good lines.
+        if (current.Count == 0)
+            return [];
         if (!_accept)
         {
             _previous = current;

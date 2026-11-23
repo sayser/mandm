@@ -11,22 +11,12 @@ public sealed class BuffTrackerService : IDisposable
     private readonly DispatcherTimer _tick;
     private readonly object _gate = new();
     /// <summary>
-    /// Phrase sights still remembered, per spell. The value is how many successful
-    /// reads in a row that sight has been missing. Not cleared on focus or when a fight ends.
-    /// An empty capture does not touch these. A sight drops only after a second miss.
+    /// Last good OCR read per capture region. Not cleared on focus, alt-tab, a timer,
+    /// a blank frame, or a failed OCR. Startup and settings changes re-baseline it.
     /// </summary>
-    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffCast = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffLand = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffFade = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _seenBuffWarn = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _seenDebuffLand = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, int>> _seenDebuffFade = new(StringComparer.Ordinal);
-    /// <summary>Canonical slain lines still on screen, per capture region.</summary>
-    private readonly Dictionary<string, HashSet<string>> _seenSlain = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RegionLineMemory> _regionReads = new(StringComparer.Ordinal);
     /// <summary>Newly appeared slain lines this OCR pass. Cleared after every region is applied.</summary>
     private readonly List<string> _newSlainThisPass = [];
-    /// <summary>Buff ids that saw a new cast and are waiting for the next land sighting to restart.</summary>
-    private readonly HashSet<string> _armedFromCast = new(StringComparer.Ordinal);
     private AppSettings _settings;
     /// <summary>False until an OCR baseline pass finishes — blocks land/warn/fade/cast actions.</summary>
     private bool _acceptMatchEvents;
@@ -61,15 +51,8 @@ public sealed class BuffTrackerService : IDisposable
         lock (_gate)
         {
             _acceptMatchEvents = false;
-            _seenBuffCast.Clear();
-            _seenBuffLand.Clear();
-            _seenBuffFade.Clear();
-            _seenBuffWarn.Clear();
-            _seenDebuffLand.Clear();
-            _seenDebuffFade.Clear();
-            _seenSlain.Clear();
+            _regionReads.Clear();
             _newSlainThisPass.Clear();
-            _armedFromCast.Clear();
         }
     }
 
@@ -100,72 +83,57 @@ public sealed class BuffTrackerService : IDisposable
         if (string.IsNullOrWhiteSpace(regionId))
             return;
 
-        var entries = lines
-            .Select(raw => (raw ?? string.Empty).Trim())
-            .Where(raw => raw.Length > 0)
-            .ToList();
-        // A blank or failed capture is not a successful read. Leave every remembered line in place.
-        if (entries.Count == 0)
+        // Compare this read with the region's last good text. A blank or failed
+        // capture leaves that text in place and alerts nothing.
+        List<string> freshLines;
+        lock (_gate)
+            freshLines = RegionRead(regionId).Observe(lines);
+
+        if (!fireEvents || !_acceptMatchEvents || freshLines.Count == 0)
             return;
 
-        foreach (var def in _settings.Buffs.Where(b => b.Enabled).ToList())
+        foreach (var def in _settings.Buffs)
         {
+            if (!def.Enabled)
+                continue;
             if (def.IsDebuff)
             {
-                ApplyDebuffLines(regionId, entries, def, fireEvents);
+                ApplyDebuffLines(regionId, freshLines, def);
                 continue;
             }
 
-            // Order: cast → land → warn → fade.
-            // Warn before fade so a warn line that also loosely resembles fade still alarms
-            // before any clear, and fade uses specificity against warn/land/cast.
-
+            // Only a line that just appeared can fire. A cast and a land in the same
+            // read start the buff once. A line that is still on screen does not.
             var peers = PhrasesOf(def).ToList();
-            if (RegionEquals(def.CastRegionId, regionId))
-            {
-                var fresh = TakeFreshSights(
-                    def.Id, ReadSights(entries, def.CastText, peers), def.CastText, _seenBuffCast, fireEvents);
-                if (fresh.Count > 0)
-                {
-                    lock (_gate)
-                        _armedFromCast.Add(def.Id);
-                }
-            }
+            var castNew = RegionEquals(def.CastRegionId, regionId)
+                          && ReadSights(freshLines, def.CastText, peers).Count > 0;
+            var landNew = RegionEquals(def.LandRegionId, regionId)
+                          && ReadSights(freshLines, def.LandText, peers).Count > 0;
+            if (castNew || landNew)
+                LandBuff(def);
 
-            if (RegionEquals(def.LandRegionId, regionId))
-            {
-                var visible = ReadSights(entries, def.LandText, peers);
-                var fresh = TakeFreshSights(def.Id, visible, def.LandText, _seenBuffLand, fireEvents);
-                bool castArmedLand;
-                lock (_gate)
-                {
-                    castArmedLand = fireEvents && _acceptMatchEvents
-                                    && visible.Count > 0
-                                    && _armedFromCast.Remove(def.Id);
-                }
+            if (RegionEquals(def.WarnRegionId, regionId)
+                && !string.IsNullOrWhiteSpace(def.WarnText)
+                && ReadSights(freshLines, def.WarnText, peers).Count > 0)
+                TriggerWarnFromText(def);
 
-                if (fresh.Count > 0 || castArmedLand)
-                    LandBuff(def);
-            }
-
-            if (RegionEquals(def.WarnRegionId, regionId) && !string.IsNullOrWhiteSpace(def.WarnText))
-            {
-                var fresh = TakeFreshSights(
-                    def.Id, ReadSights(entries, def.WarnText, peers), def.WarnText, _seenBuffWarn, fireEvents);
-                if (fresh.Count > 0)
-                    TriggerWarnFromText(def);
-            }
-
-            if (RegionEquals(def.FadeRegionId, regionId))
-            {
-                var fresh = TakeFreshSights(
-                    def.Id, ReadSights(entries, def.FadeText, peers), def.FadeText, _seenBuffFade, fireEvents);
-                if (fresh.Count > 0)
-                    FadeBuff(def);
-            }
+            if (RegionEquals(def.FadeRegionId, regionId)
+                && ReadSights(freshLines, def.FadeText, peers).Count > 0)
+                FadeBuff(def);
         }
 
-        NoteSlainLines(regionId, entries, fireEvents);
+        NoteSlainLines(freshLines);
+    }
+
+    private RegionLineMemory RegionRead(string regionId)
+    {
+        if (!_regionReads.TryGetValue(regionId, out var memory))
+        {
+            memory = new RegionLineMemory();
+            _regionReads[regionId] = memory;
+        }
+
+        return memory;
     }
 
     /// <summary>
@@ -176,21 +144,17 @@ public sealed class BuffTrackerService : IDisposable
     private void ApplyDebuffLines(
         string regionId,
         List<string> entries,
-        BuffDefinition def,
-        bool fireEvents)
+        BuffDefinition def)
     {
         if (RegionEquals(def.LandRegionId, regionId))
         {
-            var visible = ReadSights(entries, def.LandText, PeerPhrases(def, def.LandText));
-            var fresh = TakeFreshSights(def.Id, visible, def.LandText, _seenDebuffLand, fireEvents);
-            foreach (var sight in fresh)
+            foreach (var sight in ReadSights(entries, def.LandText, PeerPhrases(def, def.LandText).ToList()))
                 LandDebuff(def, sight.Monster);
         }
 
         if (!string.IsNullOrWhiteSpace(def.FadeText) && RegionEquals(def.FadeRegionId, regionId))
         {
-            var visible = ReadSights(entries, def.FadeText, PeerPhrases(def, def.FadeText));
-            var fresh = TakeFreshSights(def.Id, visible, def.FadeText, _seenDebuffFade, fireEvents);
+            var fresh = ReadSights(entries, def.FadeText, PeerPhrases(def, def.FadeText).ToList());
             var monsters = new List<string>();
             foreach (var sight in fresh)
                 monsters.Add(sight.Monster);
@@ -214,7 +178,7 @@ public sealed class BuffTrackerService : IDisposable
     }
 
     private static List<DebuffPhrase.DebuffSight> ReadSights(
-        List<string> entries,
+        IReadOnlyList<string> entries,
         string? phrase,
         IEnumerable<string> peers)
     {
@@ -248,48 +212,20 @@ public sealed class BuffTrackerService : IDisposable
             yield return def.FadeText;
     }
 
-    private List<DebuffPhrase.DebuffSight> TakeFreshSights(
-        string spellId,
-        List<DebuffPhrase.DebuffSight> visible,
-        string? phrase,
-        Dictionary<string, Dictionary<string, int>> store,
-        bool fireEvents)
-    {
-        lock (_gate)
-        {
-            if (!store.TryGetValue(spellId, out var seen))
-            {
-                seen = new Dictionary<string, int>(StringComparer.Ordinal);
-                store[spellId] = seen;
-            }
-
-            var fresh = DebuffPhrase.FreshSights(seen, visible, phrase);
-            if (!fireEvents || !_acceptMatchEvents)
-                return [];
-            return fresh;
-        }
-    }
-
     /// <summary>
     /// Same slain rule as the fight tracker, including a party member's kill.
-    /// Only a line that was not already on screen counts. The clear waits until the
-    /// pass finishes so a land in a later region of the same pass does not stick.
+    /// Only a line that was not in the previous good read counts.
     /// </summary>
-    private void NoteSlainLines(string regionId, List<string> entries, bool fireEvents)
+    private void NoteSlainLines(List<string> freshLines)
     {
-        var joined = DamageLineParser.JoinWrapped(entries);
-        var slain = joined.Where(DamageLineParser.IsSlainLine).ToList();
+        var joined = DamageLineParser.JoinWrapped(freshLines);
         lock (_gate)
         {
-            if (!_seenSlain.TryGetValue(regionId, out var seen))
+            foreach (var line in joined)
             {
-                seen = new HashSet<string>(StringComparer.Ordinal);
-                _seenSlain[regionId] = seen;
+                if (DamageLineParser.IsSlainLine(line))
+                    _newSlainThisPass.Add(line);
             }
-
-            var fresh = DebuffPhrase.FreshLines(seen, slain);
-            if (fireEvents && _acceptMatchEvents)
-                _newSlainThisPass.AddRange(fresh);
         }
     }
 

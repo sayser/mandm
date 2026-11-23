@@ -429,6 +429,80 @@ Check("a fade line gone for two successful reads alerts when it comes back",
 Check("the invis warn line is not the fade line",
     FadeRead("You begin to feel yourself appearing.").Count == 0);
 
+var region = new RegionLineMemory();
+int CastAlerts(params string[] lines)
+{
+    var fresh = region.Observe(lines);
+    var count = 0;
+    foreach (var line in fresh)
+    {
+        if (TextMatch.ContainsLoose(line, "You begin casting"))
+            count++;
+    }
+
+    return count;
+}
+
+var castOnce = CastAlerts("You begin casting Invisibility.");
+var castTwice = CastAlerts("You begin casting Invisibility.");
+var castThrice = CastAlerts("You begin casting Invisibility!");
+Check("the same line read three times alerts once",
+    castOnce == 1 && castTwice == 0 && castThrice == 0);
+
+var castAppended = CastAlerts(
+    "You begin casting Invisibility.",
+    "a bloated plague rat looks weak.",
+    "You begin casting Greater Hex of Enfeeblement.");
+var castAppendedAgain = CastAlerts(
+    "You begin casting Invisibility.",
+    "a bloated plague rat looks weak.",
+    "You begin casting Greater Hex of Enfeeblement.");
+Check("a new cast appended under old lines alerts once",
+    castAppended == 1 && castAppendedAgain == 0);
+
+var blank = region.Observe([]);
+var afterBlank = CastAlerts(
+    "You begin casting Invisibility.",
+    "a bloated plague rat looks weak.",
+    "You begin casting Greater Hex of Enfeeblement.");
+Check("a blank read then the same text does not alert",
+    blank.Count == 0 && afterBlank == 0);
+
+var castWrap = new RegionLineMemory();
+castWrap.Observe(["You begin casting Invisibility."]);
+var wrappedFresh = castWrap.Observe(["You begin casting", "Invisibility."]);
+var wrappedAlerts = 0;
+foreach (var line in wrappedFresh)
+{
+    if (TextMatch.ContainsLoose(line, "You begin casting"))
+        wrappedAlerts++;
+}
+Check("a wrapped fragment of the same cast line does not alert",
+    wrappedAlerts == 0);
+
+CastAlerts("a bloated plague rat looks weak.");
+var heldCast = CastAlerts("You begin casting Invisibility.");
+Check("one good read without the cast line does not drop it", heldCast == 0);
+CastAlerts("a bloated plague rat looks weak.");
+CastAlerts("You crush a crystal dervish for 32 points of damage.");
+var castBack = CastAlerts("You begin casting Invisibility.");
+Check("a line gone for two good reads then back alerts once", castBack == 1);
+
+var startup = new RegionLineMemory();
+startup.Observe(["You begin casting Invisibility."]);
+var startupAgain = startup.Observe(["You begin casting Invisibility."]);
+Check("text remembered at startup does not alert on the next read", startupAgain.Count == 0);
+
+var crowded = new RegionLineMemory();
+var many = new string[80];
+for (var i = 0; i < many.Length; i++)
+    many[i] = "combat line number " + i;
+crowded.Observe(many);
+Check("a full read keeps the lines that are still on screen", crowded.Count == 80);
+crowded.Observe(["only this line remains"]);
+crowded.Observe(["only this line remains"]);
+Check("lines that have left the screen are dropped", crowded.Count == 1);
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");

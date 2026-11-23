@@ -12,5 +12,6 @@
     <Compile Include="..\..\src\MandM\Services\DamageFight.cs" Link="DamageFight.cs" />
     <Compile Include="..\..\src\MandM\Services\TextMatch.cs" Link="TextMatch.cs" />
     <Compile Include="..\..\src\MandM\Services\DebuffPhrase.cs" Link="DebuffPhrase.cs" />
+    <Compile Include="..\..\src\MandM\Services\RegionLineMemory.cs" Link="RegionLineMemory.cs" />
   </ItemGroup>
 </Project>
