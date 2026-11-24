@@ -503,6 +503,28 @@ crowded.Observe(["only this line remains"]);
 crowded.Observe(["only this line remains"]);
 Check("lines that have left the screen are dropped", crowded.Count == 1);
 
+var spellPhrases = new[]
+{
+    "Invisibility",
+    "Invisibility versus Undead",
+    "Your skin tingles"
+};
+var ivuCast = DebuffPhrase.WinningPhrases(
+    "You begin casting Invisibility versus Undead.",
+    spellPhrases);
+Check("Invisibility versus Undead cast does not start Invisibility",
+    ivuCast.Count == 1 && ivuCast[0] == "Invisibility versus Undead");
+var onlyInvisibility = DebuffPhrase.WinningPhrases("Invisibility", spellPhrases);
+var castOnlyInvisibility = DebuffPhrase.WinningPhrases(
+    "You begin casting Invisibility.",
+    spellPhrases);
+Check("a line that is only Invisibility still starts Invisibility",
+    onlyInvisibility.Count == 1 && onlyInvisibility[0] == "Invisibility"
+    && castOnlyInvisibility.Count == 1 && castOnlyInvisibility[0] == "Invisibility");
+var tingles = DebuffPhrase.WinningPhrases("Your skin tingles.", spellPhrases);
+Check("Your skin tingles stays IVU only",
+    tingles.Count == 1 && tingles[0] == "Your skin tingles");
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");

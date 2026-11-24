@@ -28,8 +28,32 @@ public static class DebuffPhrase
     }
 
     /// <summary>
+    /// Phrases on <paramref name="line"/> that are not beaten by a longer phrase.
+    /// When one line matches more than one spell, the longer phrase wins.
+    /// </summary>
+    public static List<string> WinningPhrases(string? line, IEnumerable<string> phrases)
+    {
+        var list = new List<string>();
+        foreach (var phrase in phrases)
+        {
+            if (!string.IsNullOrWhiteSpace(phrase))
+                list.Add(phrase);
+        }
+
+        var winners = new List<string>();
+        foreach (var phrase in list)
+        {
+            if (Owns(line, phrase, list))
+                winners.Add(phrase);
+        }
+
+        return winners;
+    }
+
+    /// <summary>
     /// Word-boundary phrase match. A longer different phrase that also matches the line wins,
-    /// so a short land phrase does not claim a fade line that only shares part of the text.
+    /// so a short name does not claim a longer spell on the same line.
+    /// "Invisibility" does not own "Invisibility versus Undead."
     /// </summary>
     public static bool Owns(string? line, string? phrase, IEnumerable<string>? longerPeers)
     {

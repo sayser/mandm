@@ -92,19 +92,20 @@ public sealed class BuffTrackerService : IDisposable
         if (!fireEvents || !_acceptMatchEvents || freshLines.Count == 0)
             return;
 
+        // Every spell's phrases compete on a line. The longer phrase wins.
+        var peers = ConfiguredPhrases(_settings.Buffs);
         foreach (var def in _settings.Buffs)
         {
             if (!def.Enabled)
                 continue;
             if (def.IsDebuff)
             {
-                ApplyDebuffLines(regionId, freshLines, def);
+                ApplyDebuffLines(regionId, freshLines, def, peers);
                 continue;
             }
 
             // Only a line that just appeared can fire. A cast and a land in the same
             // read start the buff once. A line that is still on screen does not.
-            var peers = PhrasesOf(def).ToList();
             var castNew = RegionEquals(def.CastRegionId, regionId)
                           && ReadSights(freshLines, def.CastText, peers).Count > 0;
             var landNew = RegionEquals(def.LandRegionId, regionId)
@@ -144,17 +145,18 @@ public sealed class BuffTrackerService : IDisposable
     private void ApplyDebuffLines(
         string regionId,
         List<string> entries,
-        BuffDefinition def)
+        BuffDefinition def,
+        IReadOnlyList<string> peers)
     {
         if (RegionEquals(def.LandRegionId, regionId))
         {
-            foreach (var sight in ReadSights(entries, def.LandText, PeerPhrases(def, def.LandText).ToList()))
+            foreach (var sight in ReadSights(entries, def.LandText, peers))
                 LandDebuff(def, sight.Monster);
         }
 
         if (!string.IsNullOrWhiteSpace(def.FadeText) && RegionEquals(def.FadeRegionId, regionId))
         {
-            var fresh = ReadSights(entries, def.FadeText, PeerPhrases(def, def.FadeText).ToList());
+            var fresh = ReadSights(entries, def.FadeText, peers);
             var monsters = new List<string>();
             foreach (var sight in fresh)
                 monsters.Add(sight.Monster);
@@ -202,14 +204,31 @@ public sealed class BuffTrackerService : IDisposable
         return sights;
     }
 
-    private static IEnumerable<string> PeerPhrases(BuffDefinition def, string? phrase)
+    /// <summary>Cast, land, fade, and warn text from every enabled spell.</summary>
+    private static List<string> ConfiguredPhrases(IEnumerable<BuffDefinition> buffs)
     {
-        if (!string.IsNullOrWhiteSpace(def.LandText)
-            && !string.Equals(def.LandText, phrase, StringComparison.OrdinalIgnoreCase))
-            yield return def.LandText;
-        if (!string.IsNullOrWhiteSpace(def.FadeText)
-            && !string.Equals(def.FadeText, phrase, StringComparison.OrdinalIgnoreCase))
-            yield return def.FadeText;
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var def in buffs)
+        {
+            if (!def.Enabled)
+                continue;
+            Add(def.CastText);
+            Add(def.LandText);
+            Add(def.FadeText);
+            if (!def.IsDebuff)
+                Add(def.WarnText);
+        }
+
+        return list;
+
+        void Add(string? phrase)
+        {
+            if (string.IsNullOrWhiteSpace(phrase))
+                return;
+            if (seen.Add(phrase))
+                list.Add(phrase);
+        }
     }
 
     /// <summary>
@@ -241,14 +260,6 @@ public sealed class BuffTrackerService : IDisposable
 
         if (slain.Count > 0)
             ClearDebuffsForSlain(slain);
-    }
-
-    private static IEnumerable<string> PhrasesOf(BuffDefinition def)
-    {
-        if (!def.IsDebuff && !string.IsNullOrWhiteSpace(def.CastText)) yield return def.CastText;
-        if (!string.IsNullOrWhiteSpace(def.LandText)) yield return def.LandText;
-        if (!string.IsNullOrWhiteSpace(def.FadeText)) yield return def.FadeText;
-        if (!def.IsDebuff && !string.IsNullOrWhiteSpace(def.WarnText)) yield return def.WarnText;
     }
 
     private void TriggerWarnFromText(BuffDefinition def)
