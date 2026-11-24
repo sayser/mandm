@@ -104,7 +104,65 @@ public static class DebuffPhrase
     {
         var left = Key(tracked);
         var right = Key(named);
-        return left.Length > 0 && left == right;
+        if (left.Length == 0 || right.Length == 0)
+            return false;
+        if (left == right)
+            return true;
+
+        // "a bloated plague rat" and "the bloated plague rat" already share a key.
+        // A slightly longer OCR name still names that monster. A one-word scrap does not.
+        var shorter = left.Length <= right.Length ? left : right;
+        var longer = left.Length <= right.Length ? right : left;
+        if (shorter.Length < 12 || !shorter.Contains(' '))
+            return false;
+        return ContainsPhrase(longer, shorter);
+    }
+
+    /// <summary>
+    /// Which tracked debuffs a slain line removes. The fade sound never plays.
+    /// A name that matches none of them removes every tracked debuff.
+    /// </summary>
+    public readonly record struct SlainClear(bool ClearAll, string Monster)
+    {
+        public bool PlayFade => false;
+    }
+
+    public static bool TrySlainClear(IReadOnlyList<string> trackedMonsters, string? slainLine, out SlainClear clear)
+    {
+        clear = default;
+        if (!DamageLineParser.IsSlainLine(slainLine))
+            return false;
+
+        DamageLineParser.TryParseSlain(slainLine, out _, out var target);
+        foreach (var name in trackedMonsters)
+        {
+            if (!SameMonster(name, target))
+                continue;
+            clear = new SlainClear(false, target);
+            return true;
+        }
+
+        clear = new SlainClear(true, target);
+        return true;
+    }
+
+    private static bool ContainsPhrase(string longer, string shorter)
+    {
+        var start = 0;
+        while (start <= longer.Length - shorter.Length)
+        {
+            var at = longer.IndexOf(shorter, start, StringComparison.Ordinal);
+            if (at < 0)
+                return false;
+            var before = at == 0 || !char.IsLetterOrDigit(longer[at - 1]);
+            var end = at + shorter.Length;
+            var after = end == longer.Length || !char.IsLetterOrDigit(longer[end]);
+            if (before && after)
+                return true;
+            start = at + 1;
+        }
+
+        return false;
     }
 
     /// <summary>Same debuff slot: one unnamed row, or one row per monster.</summary>

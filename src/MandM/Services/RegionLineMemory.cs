@@ -19,9 +19,13 @@ public sealed class RegionLineMemory
     }
 
     private readonly Dictionary<string, Hold> _lines = new(StringComparer.Ordinal);
+    private List<string> _freshSlain = [];
     private int _stamp;
 
     public int Count => _lines.Count;
+
+    /// <summary>Slain sentences in the last successful read that were not already remembered.</summary>
+    public IReadOnlyList<string> FreshSlain => _freshSlain;
 
     public void Clear() => _lines.Clear();
 
@@ -34,7 +38,10 @@ public sealed class RegionLineMemory
     {
         var normalized = Normalize(lines);
         if (normalized.Count == 0)
+        {
+            _freshSlain = [];
             return [];
+        }
 
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         var display = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -56,8 +63,15 @@ public sealed class RegionLineMemory
         }
 
         if (order.Count == 0)
+        {
+            _freshSlain = [];
             return [];
+        }
 
+        var known = new HashSet<string>(_lines.Keys, StringComparer.Ordinal);
+        var knownCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pair in _lines)
+            knownCounts[pair.Key] = pair.Value.Count;
         var fresh = new List<string>();
         var matched = new HashSet<string>(StringComparer.Ordinal);
         var absorbed = new HashSet<string>(StringComparer.Ordinal);
@@ -84,7 +98,11 @@ public sealed class RegionLineMemory
 
         foreach (var key in order)
         {
-            if (matched.Contains(key) || absorbed.Contains(key) || remainders.Contains(key))
+            if (matched.Contains(key))
+                continue;
+            // A slain sentence is not a scrap of an older line, and it is not the leftover
+            // half of one. Hiding it is why a kill left the debuff on the list.
+            if ((absorbed.Contains(key) || remainders.Contains(key)) && !DamageLineParser.IsSlainLine(key))
                 continue;
             fresh.Add(display[key]);
             _lines[key] = new Hold
@@ -95,6 +113,8 @@ public sealed class RegionLineMemory
             };
             matched.Add(key);
         }
+
+        _freshSlain = CollectFreshSlain(normalized, known, knownCounts, matched);
 
         var drop = new List<string>();
         foreach (var pair in _lines)
@@ -119,7 +139,7 @@ public sealed class RegionLineMemory
         HashSet<string> absorbed,
         HashSet<string> remainders)
     {
-        if (current.Length < MinFragment)
+        if (current.Length < MinFragment || DamageLineParser.IsSlainLine(current))
             return;
 
         string? best = null;
@@ -191,5 +211,72 @@ public sealed class RegionLineMemory
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Joined slain sentences whose own text was not in the previous good read.
+    /// A fragment of a longer line already remembered is the same kill, still on screen.
+    /// </summary>
+    private List<string> CollectFreshSlain(
+        List<string> normalized,
+        HashSet<string> known,
+        Dictionary<string, int> knownCounts,
+        HashSet<string> matched)
+    {
+        var tallies = new Dictionary<string, int>(StringComparer.Ordinal);
+        var displays = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in DamageLineParser.JoinWrapped(normalized))
+        {
+            if (!DamageLineParser.IsSlainLine(line))
+                continue;
+            var key = DamageLineParser.Canonical(line);
+            if (key.Length == 0)
+                continue;
+            tallies[key] = tallies.GetValueOrDefault(key) + 1;
+            displays.TryAdd(key, line);
+        }
+
+        var fresh = new List<string>();
+        foreach (var (key, count) in tallies)
+        {
+            var previous = knownCounts.GetValueOrDefault(key);
+            _lines.TryGetValue(key, out var hold);
+            // A second copy of a line still on screen is not a new kill.
+            if (previous == 0 && !IsRememberedFragment(key, known))
+                fresh.Add(displays[key]);
+
+            if (hold is not null)
+            {
+                hold.Count = count;
+                hold.Misses = 0;
+                hold.Stamp = ++_stamp;
+            }
+            else
+            {
+                _lines[key] = new Hold
+                {
+                    Count = count,
+                    Misses = 0,
+                    Stamp = ++_stamp
+                };
+            }
+
+            matched.Add(key);
+        }
+
+        return fresh;
+    }
+
+    private static bool IsRememberedFragment(string key, HashSet<string> known)
+    {
+        foreach (var old in known)
+        {
+            if (old.Length <= key.Length)
+                continue;
+            if (old.StartsWith(key, StringComparison.Ordinal) || old.EndsWith(key, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 }

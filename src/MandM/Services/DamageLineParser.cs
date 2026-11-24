@@ -93,7 +93,22 @@ public static class DamageLineParser
     }
 
     private static bool IsCompleteEvent(string line) =>
-        IsSlainLine(line) || TryParse(line, out _);
+        TryParse(line, out _) || (IsSlainLine(line) && HasSlainTarget(line));
+
+    /// <summary>
+    /// A slain line with no monster, or only "a" / "an" / "the", is still wrapped.
+    /// The rest of the name is on the next OCR line.
+    /// </summary>
+    private static bool HasSlainTarget(string line)
+    {
+        if (!TryParseSlain(line, out var target))
+            return false;
+        var name = target.Trim();
+        return name.Length > 0
+            && !name.Equals("a", StringComparison.OrdinalIgnoreCase)
+            && !name.Equals("an", StringComparison.OrdinalIgnoreCase)
+            && !name.Equals("the", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>Letters, digits, and single spaces. Timestamps and punctuation are removed.</summary>
     public static string Canonical(string? raw)

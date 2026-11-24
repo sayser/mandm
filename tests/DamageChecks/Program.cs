@@ -525,6 +525,102 @@ var tingles = DebuffPhrase.WinningPhrases("Your skin tingles.", spellPhrases);
 Check("Your skin tingles stays IVU only",
     tingles.Count == 1 && tingles[0] == "Your skin tingles");
 
+List<string> AfterSlain(List<string> debuffs, string line, out bool playFade)
+{
+    playFade = true;
+    if (!DebuffPhrase.TrySlainClear(debuffs, line, out var clear))
+        return debuffs;
+    playFade = clear.PlayFade;
+    if (clear.ClearAll)
+        return [];
+    return debuffs.Where(name => !DebuffPhrase.SameMonster(name, clear.Monster)).ToList();
+}
+
+DebuffPhrase.TryRead("a bloated plague rat looks weak.", "looks weak", null, out var landedRat);
+var ratRows = new List<string> { landedRat };
+var buffsLeft = new List<string> { "Speed of the Pack" };
+var killMemory = new RegionLineMemory();
+killMemory.Observe(["a bloated plague rat looks weak."]);
+killMemory.Observe(
+[
+    "a bloated plague rat looks weak.",
+    "You have slain a bloated plague rat!"
+]);
+var fadePlayed = true;
+foreach (var line in killMemory.FreshSlain)
+    ratRows = AfterSlain(ratRows, line, out fadePlayed);
+Check("land then slain removes that row and does not play the fade sound",
+    killMemory.FreshSlain.Count == 1
+    && ratRows.Count == 0
+    && !fadePlayed
+    && buffsLeft.Count == 1);
+killMemory.Observe(
+[
+    "a bloated plague rat looks weak.",
+    "You have slain a bloated plague rat!"
+]);
+Check("a slain line still on screen does not clear again", killMemory.FreshSlain.Count == 0);
+
+var startupKill = new RegionLineMemory();
+startupKill.Observe(["You have slain a bloated plague rat!"]);
+var startupRows = new List<string> { landedRat };
+startupKill.Observe([]);
+startupKill.Observe(["You have slain a bloated plague rat!"]);
+Check("startup text and a blank capture do not clear or re-add the debuff",
+    startupKill.FreshSlain.Count == 0 && startupRows.Count == 1 && startupRows[0] == landedRat);
+
+var theRows = AfterSlain(
+    [landedRat],
+    "You have slain the bloated plague rat!",
+    out var theFade);
+Check("a and the are the same monster on a slain line", theRows.Count == 0 && !theFade);
+
+var crystalRows = AfterSlain(
+    ["a crystal dervish", landedRat],
+    "You have slain a crystal dervish!",
+    out var crystalFade);
+Check("you have slain a crystal dervish removes that monster only",
+    crystalRows.Count == 1
+    && DebuffPhrase.SameMonster(crystalRows[0], landedRat)
+    && !crystalFade);
+
+var partyRows = AfterSlain(
+    ["the tormented guardian", landedRat],
+    "Your party member Andromocles has slain a tormented guardian!",
+    out var partyFade);
+Check("a party slain line removes that monster and does not play the fade sound",
+    partyRows.Count == 1
+    && DebuffPhrase.SameMonster(partyRows[0], landedRat)
+    && !partyFade);
+
+var unknownRows = AfterSlain(
+    [landedRat, "a crystal dervish"],
+    "You have slain a tormented guardian!",
+    out var unknownFade);
+Check("a slain line that names none of the tracked monsters clears every debuff",
+    unknownRows.Count == 0 && !unknownFade);
+
+var emptyFade = AfterSlain([], "You have slain a bloated plague rat!", out var emptyFadeSound);
+Check("an empty-fade debuff has no row to clear and does not play the fade sound",
+    emptyFade.Count == 0 && !emptyFadeSound);
+
+var wrappedKill = new RegionLineMemory();
+wrappedKill.Observe(["You have slain a tormented guardian!"]);
+wrappedKill.Observe(
+[
+    "You have slain a",
+    "bloated plague rat!"
+]);
+var wrappedRows = new List<string> { landedRat, "a crystal dervish" };
+var wrappedFade = true;
+foreach (var line in wrappedKill.FreshSlain)
+    wrappedRows = AfterSlain(wrappedRows, line, out wrappedFade);
+Check("a wrapped slain line is new and removes that monster without the fade sound",
+    wrappedKill.FreshSlain.Count == 1
+    && wrappedRows.Count == 1
+    && DebuffPhrase.SameMonster(wrappedRows[0], "a crystal dervish")
+    && !wrappedFade);
+
 if (failed > 0)
 {
     Console.WriteLine(failed + " failed");

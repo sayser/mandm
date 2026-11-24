@@ -86,17 +86,24 @@ public sealed class BuffTrackerService : IDisposable
         // Compare this read with the region's last good text. A blank or failed
         // capture leaves that text in place and alerts nothing.
         List<string> freshLines;
+        List<string> freshSlain;
         lock (_gate)
-            freshLines = RegionRead(regionId).Observe(lines);
+        {
+            var memory = RegionRead(regionId);
+            freshLines = memory.Observe(lines);
+            freshSlain = memory.FreshSlain.ToList();
+        }
 
-        if (!fireEvents || !_acceptMatchEvents || freshLines.Count == 0)
+        if (!fireEvents || !_acceptMatchEvents)
+            return;
+        if (freshLines.Count == 0 && freshSlain.Count == 0)
             return;
 
         // Every spell's phrases compete on a line. The longer phrase wins.
         var peers = ConfiguredPhrases(_settings.Buffs);
         foreach (var def in _settings.Buffs)
         {
-            if (!def.Enabled)
+            if (!def.Enabled || freshLines.Count == 0)
                 continue;
             if (def.IsDebuff)
             {
@@ -123,7 +130,7 @@ public sealed class BuffTrackerService : IDisposable
                 FadeBuff(def);
         }
 
-        NoteSlainLines(freshLines);
+        NoteSlainLines(freshSlain);
     }
 
     private RegionLineMemory RegionRead(string regionId)
@@ -233,14 +240,14 @@ public sealed class BuffTrackerService : IDisposable
 
     /// <summary>
     /// Same slain rule as the fight tracker, including a party member's kill.
-    /// Only a line that was not in the previous good read counts.
+    /// Only a slain sentence that was not in the previous good read counts.
+    /// A wrapped kill is already joined. A line still on screen is not in this list.
     /// </summary>
-    private void NoteSlainLines(List<string> freshLines)
+    private void NoteSlainLines(List<string> freshSlain)
     {
-        var joined = DamageLineParser.JoinWrapped(freshLines);
         lock (_gate)
         {
-            foreach (var line in joined)
+            foreach (var line in freshSlain)
             {
                 if (DamageLineParser.IsSlainLine(line))
                     _newSlainThisPass.Add(line);
@@ -318,22 +325,27 @@ public sealed class BuffTrackerService : IDisposable
                 if (key.Length == 0 || !seen.Add(key))
                     continue;
 
-                DamageLineParser.TryParseSlain(line, out _, out var target);
-                if (tracked.Any(name => DebuffPhrase.SameMonster(name, target)))
+                // Slain removal is silent. Do not play the fade sound or speak.
+                if (!DebuffPhrase.TrySlainClear(tracked, line, out var clear))
+                    continue;
+
+                if (clear.ClearAll)
                 {
-                    var named = ActiveBuffs
-                        .Where(b => b.IsDebuff && DebuffPhrase.SameMonster(b.TargetName, target))
-                        .ToList();
-                    foreach (var buff in named)
+                    var all = ActiveBuffs.Where(b => b.IsDebuff).ToList();
+                    foreach (var buff in all)
                         ActiveBuffs.Remove(buff);
-                    changed |= named.Count > 0;
+                    tracked.Clear();
+                    changed |= all.Count > 0;
                     continue;
                 }
 
-                var all = ActiveBuffs.Where(b => b.IsDebuff).ToList();
-                foreach (var buff in all)
+                var named = ActiveBuffs
+                    .Where(b => b.IsDebuff && DebuffPhrase.SameMonster(b.TargetName, clear.Monster))
+                    .ToList();
+                foreach (var buff in named)
                     ActiveBuffs.Remove(buff);
-                changed |= all.Count > 0;
+                tracked.RemoveAll(name => DebuffPhrase.SameMonster(name, clear.Monster));
+                changed |= named.Count > 0;
             }
 
             if (changed)
